@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --surface-lacquer: rgba(22, 19, 18, 0.88);
+  --surface-lacquer-elevated: rgba(34, 29, 27, 0.94);
+  --border-hairline: rgba(245, 239, 230, 0.14);
+  --text-parchment: #f5efe6;
+  --text-stone: #a89f96;
+  --accent-amber: #d98a4e;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #161312;
+  color: var(--text-parchment);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Custom hairline range input for breeze and volume controls */
+input[type="range"].sanctuary-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(245, 239, 230, 0.18);
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"].sanctuary-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #f5efe6;
+  border: 2px solid #d98a4e;
+  cursor: pointer;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+input[type="range"].sanctuary-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"].sanctuary-slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #f5efe6;
+  border: 2px solid #d98a4e;
+  cursor: pointer;
+}

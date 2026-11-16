@@ -1,0 +1,6 @@
+{
+  "name": "Edo Sanctuary — Japanese Palace & Sakura Garden 3D",
+  "description": "Interactive 3D Japanese Edo castle keep with a blooming sakura garden, arched stream bridge, stone lanterns, animated foreground koi pond, and sunset mountain backdrop.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
