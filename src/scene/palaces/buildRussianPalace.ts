@@ -400,15 +400,21 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
   mainGrp.add(porchGrp);
   const colShaftGeo = trackGeo(new THREE.CylinderGeometry(0.26, 0.3, 2.55, 12));
   const colBulgeGeo = trackGeo(new THREE.SphereGeometry(0.38, 12, 10));
+  const colPlinthGeo = trackGeo(new THREE.BoxGeometry(0.74, 0.24, 0.74));
   for (const px of [-1.9, 1.9]) {
+    const cPlinth = new THREE.Mesh(colPlinthGeo, mats.graniteStone);
+    cPlinth.position.set(px, 0.12, 0.52);
+    cPlinth.castShadow = true;
+    porchGrp.add(cPlinth);
+
     const col = new THREE.Mesh(colShaftGeo, mats.shikkuiPlaster);
-    col.position.set(px, 1.35, 0.52);
+    col.position.set(px, 1.38, 0.52);
     col.castShadow = true;
     porchGrp.add(col);
 
     const bulge = new THREE.Mesh(colBulgeGeo, mats.russianBrick);
     bulge.scale.set(1, 0.72, 1);
-    bulge.position.set(px, 1.15, 0.52);
+    bulge.position.set(px, 1.18, 0.52);
     porchGrp.add(bulge);
   }
   const porchCrossArch = createKokoshnikArch(
@@ -431,8 +437,15 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
   porchTent.castShadow = true;
   porchGrp.add(porchTent);
 
+  const porchNeck = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(0.32, 0.44, 0.56, 8)),
+    mats.shikkuiPlaster,
+  );
+  porchNeck.position.set(0, 4.98, 0.25);
+  porchGrp.add(porchNeck);
+
   const porchCup = createOnionDome(0.45, 0.75, mats.brushedGold, mats.brushedGold, mats.brushedGold, trackGeo);
-  porchCup.position.set(0, 5.25, 0.25);
+  porchCup.position.set(0, 5.22, 0.25);
   porchGrp.add(porchCup);
 
   // Lower Crimson Brick Terem State Hall
@@ -657,8 +670,13 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
   centralDome.position.y = crownY + 2.38;
   mainGrp.add(centralDome);
 
-  // 4 Flanking Polychrome St. Basil-style Onion Cupolas (Malachite, Crimson, & Gold)
-  const drumGeo = trackGeo(new THREE.CylinderGeometry(0.74, 0.84, 1.75, 12));
+  // 4 Grounded Polychrome St. Basil-style Onion Cupola Turrets (Malachite, Crimson, & Gold)
+  // Each turret pedestal extends solidly down through the sloped green hip roof into the upper Belvedere hall
+  const turretPlinthGeo = trackGeo(new THREE.BoxGeometry(1.9, 2.4, 1.9));
+  const turretPlinthCapGeo = trackGeo(new THREE.BoxGeometry(2.08, 0.26, 2.08));
+  const drumGeo = trackGeo(new THREE.CylinderGeometry(0.76, 0.88, 2.55, 12));
+  const drumTopRingGeo = trackGeo(new THREE.CylinderGeometry(0.92, 0.92, 0.24, 12));
+  const turretSlitGeo = trackGeo(new THREE.BoxGeometry(0.2, 0.86, 0.14));
   const cupCorners: Array<[number, number, THREE.Material, THREE.Material]> = [
     [-3.35, 2.35, mats.malachiteCopper, mats.brushedGold],
     [3.35, 2.35, mats.russianBrick, mats.shikkuiPlaster],
@@ -666,13 +684,41 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
     [3.35, -2.35, mats.malachiteCopper, mats.shikkuiPlaster],
   ];
   for (const [dx, dz, dMat, rMat] of cupCorners) {
+    const plinth = new THREE.Mesh(turretPlinthGeo, mats.russianBrick);
+    plinth.position.set(dx, upperY + upperH - 0.15, dz);
+    plinth.castShadow = true;
+    plinth.receiveShadow = true;
+    mainGrp.add(plinth);
+
+    const plinthCap = new THREE.Mesh(turretPlinthCapGeo, mats.shikkuiPlaster);
+    plinthCap.position.set(dx, upperY + upperH + 1.08, dz);
+    plinthCap.castShadow = true;
+    mainGrp.add(plinthCap);
+
     const drum = new THREE.Mesh(drumGeo, mats.shikkuiPlaster);
-    drum.position.set(dx, crownY + 0.5, dz);
+    drum.position.set(dx, crownY + 0.24, dz);
     drum.castShadow = true;
+    drum.receiveShadow = true;
     mainGrp.add(drum);
 
+    const topRing = new THREE.Mesh(drumTopRingGeo, mats.russianBrick);
+    topRing.position.set(dx, crownY + 1.38, dz);
+    mainGrp.add(topRing);
+
+    for (let si = 0; si < 4; si++) {
+      const sa = (si / 4) * Math.PI * 2;
+      const tSlit = new THREE.Mesh(turretSlitGeo, mats.palaceWindow);
+      tSlit.position.set(
+        dx + Math.cos(sa) * 0.81,
+        crownY + 0.65,
+        dz + Math.sin(sa) * 0.81,
+      );
+      tSlit.rotation.y = -sa + Math.PI / 2;
+      mainGrp.add(tSlit);
+    }
+
     const cup = createOnionDome(1.06, 1.75, dMat, rMat, mats.brushedGold, trackGeo);
-    cup.position.set(dx, crownY + 1.32, dz);
+    cup.position.set(dx, crownY + 1.48, dz);
     mainGrp.add(cup);
   }
 
@@ -816,14 +862,24 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
   towerGrp.add(tSpire);
 
   const spireRibGeo = trackGeo(new THREE.CylinderGeometry(0.025, 0.04, 4.95, 5));
+  const upAxis = new THREE.Vector3(0, 1, 0);
   for (let r = 0; r < 8; r++) {
     const a = (r / 8) * Math.PI * 2 + Math.PI / 8;
+    const basePt = new THREE.Vector3(Math.cos(a) * 2.22, 12.82, Math.sin(a) * 2.22);
+    const tipPt = new THREE.Vector3(0, 17.42, 0);
+    const dir = tipPt.clone().sub(basePt).normalize();
     const sRib = new THREE.Mesh(spireRibGeo, mats.brushedGold);
-    sRib.position.set(Math.cos(a) * 1.12, 15.1, Math.sin(a) * 1.12);
-    sRib.rotation.z = Math.cos(a) * 0.44;
-    sRib.rotation.x = -Math.sin(a) * 0.44;
+    sRib.position.copy(basePt).lerp(tipPt, 0.5);
+    sRib.quaternion.setFromUnitVectors(upAxis, dir);
     towerGrp.add(sRib);
   }
+
+  const spireLanternNeck = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(0.4, 0.56, 0.52, 8)),
+    mats.shikkuiPlaster,
+  );
+  spireLanternNeck.position.y = 17.16;
+  towerGrp.add(spireLanternNeck);
 
   const tFinial = createOnionDome(
     0.58,
@@ -934,6 +990,13 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
   rotDome.castShadow = true;
   rotGrp.add(rotDome);
 
+  const rotCupNeck = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(0.46, 0.6, 0.46, 8)),
+    mats.shikkuiPlaster,
+  );
+  rotCupNeck.position.y = 7.56;
+  rotGrp.add(rotCupNeck);
+
   const rotCup = createOnionDome(
     0.72,
     1.25,
@@ -942,7 +1005,7 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
     mats.brushedGold,
     trackGeo,
   );
-  rotCup.position.y = 7.75;
+  rotCup.position.y = 7.76;
   rotGrp.add(rotCup);
 
   // =========================================================================
@@ -988,6 +1051,13 @@ export function buildRussianPalace(mats: SceneMaterialLibrary): PalaceBuildResul
   gRoof.position.y = 6.4;
   gRoof.castShadow = true;
   gateGrp.add(gRoof);
+
+  const gDomeNeck = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(0.44, 0.62, 0.56, 8)),
+    mats.shikkuiPlaster,
+  );
+  gDomeNeck.position.y = 7.22;
+  gateGrp.add(gDomeNeck);
 
   const gDome = createOnionDome(
     0.66,

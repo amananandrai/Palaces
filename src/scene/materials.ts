@@ -13,6 +13,7 @@ export interface SceneMaterialLibrary {
   vermilionLacquer: THREE.MeshPhysicalMaterial;
   graniteStone: THREE.MeshStandardMaterial;
   steppingStone: THREE.MeshStandardMaterial;
+  stonePathway: THREE.MeshStandardMaterial;
   mountainTerrain: THREE.MeshStandardMaterial;
   lanternGlow: THREE.MeshStandardMaterial;
   waterSurface: THREE.MeshPhysicalMaterial;
@@ -65,6 +66,8 @@ export interface SceneMaterialLibrary {
   cattailHead: THREE.MeshStandardMaterial;
   persianCarpet: THREE.MeshStandardMaterial;
   camelDarkFur: THREE.MeshStandardMaterial;
+  snowflake: THREE.MeshStandardMaterial;
+  butterflyWingMaterials: THREE.MeshStandardMaterial[];
   dispose: () => void;
 }
 
@@ -190,8 +193,19 @@ export function createMaterialLibrary(
     new THREE.MeshStandardMaterial({
       map: textures.steppingStoneAlbedo,
       bumpMap: textures.steppingStoneBump,
-      bumpScale: 0.08,
-      roughness: 0.84,
+      bumpScale: 0.16,
+      roughness: 0.85,
+      metalness: 0.02,
+    }),
+  );
+
+  const stonePathway = track(
+    new THREE.MeshStandardMaterial({
+      map: textures.stonePathwayAlbedo,
+      bumpMap: textures.stonePathwayBump,
+      bumpScale: 0.22,
+      vertexColors: true,
+      roughness: 0.86,
       metalness: 0.02,
     }),
   );
@@ -348,9 +362,34 @@ export function createMaterialLibrary(
       map: textures.petalAlpha,
       alphaTest: 0.35,
       side: THREE.DoubleSide,
+      color: 0xffffff,
       roughness: 0.55,
       metalness: 0.0,
     }),
+  );
+
+  const snowflake = track(
+    new THREE.MeshStandardMaterial({
+      map: textures.snowflakeAlpha,
+      alphaTest: 0.3,
+      side: THREE.DoubleSide,
+      color: 0xffffff,
+      roughness: 0.42,
+      metalness: 0.14,
+    }),
+  );
+
+  const butterflyWingMaterials = [0xf29032, 0x36bdd6, 0xeb789e, 0xf2cf58].map((tint) =>
+    track(
+      new THREE.MeshStandardMaterial({
+        map: textures.butterflyWingAlpha,
+        alphaTest: 0.3,
+        side: THREE.DoubleSide,
+        color: tint,
+        roughness: 0.48,
+        metalness: 0.06,
+      }),
+    ),
   );
 
   const koiMaterials = textures.koiTextures.map((tex) =>
@@ -771,6 +810,7 @@ export function createMaterialLibrary(
     vermilionLacquer,
     graniteStone,
     steppingStone,
+    stonePathway,
     mountainTerrain,
     lanternGlow,
     waterSurface,
@@ -823,6 +863,8 @@ export function createMaterialLibrary(
     cattailHead,
     persianCarpet,
     camelDarkFur,
+    snowflake,
+    butterflyWingMaterials,
     dispose: () => {
       for (const m of materials) {
         m.dispose();

@@ -1839,11 +1839,21 @@ export function buildGardenEnvironment(
     group.add(kl);
   }
 
-  // 8. Stepping-stone / flagstone garden paths routed to the active bridge & terrace
-  const stepGeo = trackGeo(new THREE.CylinderGeometry(0.58, 0.66, 0.14, 9));
-  const pathPoints: Array<{ x: number; z: number; sx: number; sz: number; rot: number }> = [];
+  // 8. Textured Stone Cobblestone/Flagstone Garden Pathways & Chiseled Stepping Slabs
+  const stonePaletteByStyle: Record<
+    PalaceStyle,
+    { face: number; verge: number; slab: [number, number, number] }
+  > = {
+    japanese: { face: 0xa4a99d, verge: 0x6f7a62, slab: [0.84, 0.86, 0.82] },
+    russian: { face: 0xb6c1d2, verge: 0xdce6f2, slab: [0.88, 0.92, 0.96] },
+    victorian: { face: 0xb8af99, verge: 0x6e785a, slab: [0.92, 0.88, 0.8] },
+    mughal: { face: 0xc96e56, verge: 0x9c5541, slab: [0.98, 0.64, 0.52] },
+    persian: { face: 0xdfc18a, verge: 0xc8a468, slab: [0.98, 0.88, 0.68] },
+  };
+  const pal = stonePaletteByStyle[style];
+  const faceCol = new THREE.Color(pal.face);
+  const vergeCol = new THREE.Color(pal.verge);
 
-  // Approach from west bank onto bridge west landing
   const bridgeCos = Math.cos(spec.bridgePos.rotY);
   const bridgeSin = Math.sin(spec.bridgePos.rotY);
   const westLandX = spec.bridgePos.x - bridgeCos * 4.4;
@@ -1851,66 +1861,208 @@ export function buildGardenEnvironment(
   const eastLandX = spec.bridgePos.x + bridgeCos * 4.4;
   const eastLandZ = spec.bridgePos.z - bridgeSin * 4.4;
 
+  // Build terrain-conforming, crowned stone paver walkway ribbons with seamless world-space UVs
+  const buildStonePathRibbon = (
+    curve: THREE.CatmullRomCurve3,
+    segments: number,
+    width: number,
+  ) => {
+    const pts = curve.getPoints(segments);
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+
+    const lateralFracs = [-0.52, -0.38, 0.0, 0.38, 0.52];
+    const heightOffsets = [-0.045, 0.048, 0.068, 0.048, -0.045];
+    const rowCols = [vergeCol, faceCol, faceCol, faceCol, vergeCol];
+
+    let arcDist = 0;
+    let ringIndex = 0;
+    let prevValid = false;
+
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (i > 0) arcDist += Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z);
+
+      const safe =
+        pondSignedFactor(p.x, p.z, style) >= 1.08 &&
+        distanceToStream(p.x, p.z, style).dist >= 2.1;
+      if (!safe) {
+        prevValid = false;
+        continue;
+      }
+
+      const prevP = pts[Math.max(0, i - 1)];
+      const nextP = pts[Math.min(pts.length - 1, i + 1)];
+      let tx = nextP.x - prevP.x;
+      let tz = nextP.z - prevP.z;
+      const tLen = Math.hypot(tx, tz) || 1;
+      tx /= tLen;
+      tz /= tLen;
+      const nx = -tz;
+      const nz = tx;
+
+      for (let c = 0; c < 5; c++) {
+        const lat = lateralFracs[c] * width;
+        const wx = p.x + nx * lat;
+        const wz = p.z + nz * lat;
+        const wy = groundHeightAt(wx, wz, style) + heightOffsets[c];
+        positions.push(wx, wy, wz);
+        normals.push(0, 1, 0);
+        uvs.push((lateralFracs[c] + 0.5) * 1.1, arcDist * 0.58);
+        colors.push(rowCols[c].r, rowCols[c].g, rowCols[c].b);
+      }
+
+      if (prevValid && ringIndex > 0) {
+        const r0 = (ringIndex - 1) * 5;
+        const r1 = ringIndex * 5;
+        for (let c = 0; c < 4; c++) {
+          indices.push(r0 + c, r0 + c + 1, r1 + c);
+          indices.push(r0 + c + 1, r1 + c + 1, r1 + c);
+        }
+      }
+
+      ringIndex++;
+      prevValid = true;
+    }
+
+    if (indices.length === 0) return;
+    const geo = trackGeo(new THREE.BufferGeometry());
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+
+    const mesh = new THREE.Mesh(geo, mats.stonePathway);
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  };
+
+  // Route 1: West approach into bridge
+  buildStonePathRibbon(
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(westLandX - 4.2, 0, westLandZ + 4.4),
+      new THREE.Vector3(westLandX - 2.1, 0, westLandZ + 2.0),
+      new THREE.Vector3(westLandX, 0, westLandZ),
+    ]),
+    14,
+    1.65,
+  );
+
+  // Route 2: East bridge landing curving through garden to Palace Gatehouse
+  buildStonePathRibbon(
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(eastLandX, 0, eastLandZ),
+      new THREE.Vector3((eastLandX + 4.4) * 0.5 + 1.5, 0, (eastLandZ - 7.8) * 0.5),
+      new THREE.Vector3(4.5, 0, -7.8),
+    ]),
+    28,
+    1.85,
+  );
+
+  // Route 3: Courtyard promenade connecting gatehouse terrace to East Garden Pavilion
+  buildStonePathRibbon(
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(1.4, 0, -4.6),
+      new THREE.Vector3(8.8, 0, -6.2),
+      new THREE.Vector3(16.6, 0, -9.6),
+    ]),
+    24,
+    1.75,
+  );
+
+  // Sculpted beveled polygonal chiseled flagstone slabs with normalized top UVs
+  const slabShape = new THREE.Shape();
+  const slabVerts: Array<[number, number]> = [
+    [-0.56, -0.38],
+    [-0.22, -0.58],
+    [0.34, -0.52],
+    [0.62, -0.14],
+    [0.52, 0.36],
+    [0.12, 0.56],
+    [-0.44, 0.44],
+    [-0.64, 0.04],
+  ];
+  slabShape.moveTo(slabVerts[0][0], slabVerts[0][1]);
+  for (let v = 1; v < slabVerts.length; v++) {
+    slabShape.lineTo(slabVerts[v][0], slabVerts[v][1]);
+  }
+  slabShape.closePath();
+  const stepGeo = trackGeo(
+    new THREE.ExtrudeGeometry(slabShape, {
+      depth: 0.09,
+      bevelEnabled: true,
+      bevelThickness: 0.035,
+      bevelSize: 0.045,
+      bevelSegments: 2,
+    }),
+  );
+  stepGeo.rotateX(-Math.PI / 2);
+  // Normalize UVs cleanly across the flagstone slab footprint so the 512x512 texture fits sharply
+  const sPos = stepGeo.attributes.position;
+  const sUv = stepGeo.attributes.uv;
+  for (let i = 0; i < sPos.count; i++) {
+    sUv.setXY(i, (sPos.getX(i) + 0.68) / 1.36, (sPos.getZ(i) + 0.62) / 1.24);
+  }
+  sUv.needsUpdate = true;
+  stepGeo.computeBoundingSphere();
+
+  const pathPoints: Array<{ x: number; z: number; sx: number; sz: number; rot: number }> = [];
   for (let i = 0; i < 6; i++) {
     const t = i / 5;
-    const px = THREE.MathUtils.lerp(westLandX - 3.2, westLandX, t);
-    const pz = THREE.MathUtils.lerp(westLandZ + 3.4, westLandZ, t);
     pathPoints.push({
-      x: px,
-      z: pz,
-      sx: 1.05 + (i % 2) * 0.15,
-      sz: 0.85 + ((i + 1) % 3) * 0.1,
-      rot: i * 0.55,
+      x: THREE.MathUtils.lerp(westLandX - 3.6, westLandX, t),
+      z: THREE.MathUtils.lerp(westLandZ + 3.8, westLandZ, t),
+      sx: 0.98 + (i % 2) * 0.14,
+      sz: 0.84 + ((i + 1) % 3) * 0.1,
+      rot: i * 0.62,
     });
   }
-
-  for (let i = 0; i < 16; i++) {
-    const t = i / 15;
+  for (let i = 0; i < 15; i++) {
+    const t = i / 14;
     const px = THREE.MathUtils.lerp(eastLandX, 4.4, t) + Math.sin(t * Math.PI) * 1.45;
-    const pz = THREE.MathUtils.lerp(eastLandZ, -7.8, t);
+    const pz = THREE.MathUtils.lerp(eastLandZ, -7.6, t);
     if (pondSignedFactor(px, pz, style) < 1.06) continue;
     pathPoints.push({
       x: px,
       z: pz,
-      sx: 1.05 + (i % 3) * 0.14,
-      sz: 0.82 + ((i + 1) % 3) * 0.12,
-      rot: i * 0.72,
+      sx: 0.98 + (i % 3) * 0.12,
+      sz: 0.82 + ((i + 1) % 3) * 0.1,
+      rot: i * 0.78,
     });
   }
-
   for (let i = 0; i < 11; i++) {
     const t = i / 10;
-    const px = THREE.MathUtils.lerp(2.2, 16.2, t);
-    const pz = THREE.MathUtils.lerp(-3.8, -9.2, t) + Math.sin(t * Math.PI) * 1.2;
+    const px = THREE.MathUtils.lerp(1.8, 16.4, t);
+    const pz = THREE.MathUtils.lerp(-4.6, -9.5, t) + Math.sin(t * Math.PI) * 0.85;
     pathPoints.push({
       x: px,
       z: pz,
-      sx: 0.96 + (i % 2) * 0.14,
-      sz: 0.8 + (i % 3) * 0.1,
-      rot: i * 0.9,
+      sx: 0.92 + (i % 2) * 0.12,
+      sz: 0.78 + (i % 3) * 0.08,
+      rot: i * 0.92,
     });
   }
 
-  const pathMat =
-    style === 'mughal'
-      ? mats.redSandstone
-      : style === 'persian'
-        ? mats.ochrePlaster
-        : mats.steppingStone;
-
-  const pathInst = new THREE.InstancedMesh(stepGeo, pathMat, pathPoints.length);
+  const pathInst = new THREE.InstancedMesh(stepGeo, mats.steppingStone, pathPoints.length);
   pathInst.receiveShadow = true;
   pathInst.castShadow = true;
 
   pathPoints.forEach((pt, idx) => {
     const py = groundHeightAt(pt.x, pt.z, style);
-    dummy.position.set(pt.x, py + 0.035, pt.z);
+    dummy.position.set(pt.x, py + 0.032, pt.z);
     dummy.rotation.set(0, pt.rot, 0);
     dummy.scale.set(pt.sx, 1, pt.sz);
     dummy.updateMatrix();
     pathInst.setMatrixAt(idx, dummy.matrix);
 
-    cTmp.setRGB(0.88 + (idx % 4) * 0.04, 0.88 + (idx % 3) * 0.03, 0.85 + (idx % 5) * 0.03);
+    const v = 0.9 + (idx % 4) * 0.04;
+    cTmp.setRGB(pal.slab[0] * v, pal.slab[1] * v, pal.slab[2] * v);
     pathInst.setColorAt(idx, cTmp);
   });
   pathInst.instanceMatrix.needsUpdate = true;

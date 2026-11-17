@@ -95,6 +95,36 @@ interface FountainJet {
   maxH: number;
 }
 
+interface FlyingBirdActor {
+  group: THREE.Group;
+  leftWing: THREE.Group;
+  rightWing: THREE.Group;
+  centerX: number;
+  centerZ: number;
+  radiusX: number;
+  radiusZ: number;
+  baseY: number;
+  bobAmp: number;
+  speed: number;
+  phase: number;
+  dir: number;
+  flapSpeed: number;
+}
+
+interface FlyingButterflyActor {
+  group: THREE.Group;
+  leftWing: THREE.Group;
+  rightWing: THREE.Group;
+  centerX: number;
+  centerZ: number;
+  radiusX: number;
+  radiusZ: number;
+  baseY: number;
+  speed: number;
+  phase: number;
+  flapSpeed: number;
+}
+
 function createCrossedClusterGeometry(size = 0.95): THREE.BufferGeometry {
   const makeCurvedCard = (rotY: number, tiltX: number) => {
     const g = new THREE.PlaneGeometry(size, size, 2, 2);
@@ -2651,35 +2681,86 @@ export function buildSakuraAndKoi(
   group.add(createShorelineReeds(style, mats, trackGeo, rand));
 
   // =========================================================================
-  // 3. BIOME FALLING / DRIFTING ATMOSPHERIC PARTICLES
+  // 3. BIOME FALLING / DRIFTING ATMOSPHERIC PARTICLES (Textured & Tinted)
   // =========================================================================
   const maxParticles = PETAL_COUNTS.flurry;
-  const particleGeo = trackGeo(
-    style === 'japanese' || style === 'mughal'
-      ? new THREE.PlaneGeometry(0.18, 0.22, 2, 2)
-      : new THREE.OctahedronGeometry(0.08, 0),
-  );
-  if (style === 'japanese' || style === 'mughal') {
-    const pPos = particleGeo.attributes.position;
+
+  let particleGeo: THREE.BufferGeometry;
+  let particleMat: THREE.Material;
+  let particleColors: THREE.Color[];
+
+  if (style === 'russian') {
+    // Crossed 6-fold crystalline snowflake planes so flakes read crisply from every angle
+    const f1 = new THREE.PlaneGeometry(0.24, 0.24);
+    const f2 = new THREE.PlaneGeometry(0.24, 0.24);
+    f2.rotateY(Math.PI * 0.45);
+    f2.rotateX(0.28);
+    particleGeo = trackGeo(mergeGeometries([f1, f2]));
+    f1.dispose();
+    f2.dispose();
+    particleMat = mats.snowflake;
+    particleColors = [
+      new THREE.Color(0xffffff),
+      new THREE.Color(0xddeeff),
+      new THREE.Color(0xeef6ff),
+    ];
+  } else if (style === 'victorian') {
+    // Veined curved English autumn & garden leaves drifting through the breeze
+    particleGeo = trackGeo(createCurvedLeafGeometry());
+    particleGeo.scale(0.52, 0.52, 0.52);
+    particleMat = mats.greenLeaf;
+    particleColors = [
+      new THREE.Color(0xe2ad4c),
+      new THREE.Color(0xc9743f),
+      new THREE.Color(0x95bc68),
+      new THREE.Color(0xf6ecd0),
+    ];
+  } else {
+    // Cupped 3D veined blossom petals (Sakura in Japan, Rose/Marigold in Mughal, Desert Rose/Saffron in Persian)
+    const pGeo = new THREE.PlaneGeometry(0.2, 0.24, 2, 2);
+    const pPos = pGeo.attributes.position;
     for (let i = 0; i < pPos.count; i++) {
       const px = pPos.getX(i);
       const py = pPos.getY(i);
-      pPos.setZ(i, (px * px + py * py) * 1.8);
+      pPos.setZ(i, (px * px + py * py) * 1.9);
     }
-    particleGeo.computeVertexNormals();
-  }
+    pGeo.computeVertexNormals();
+    particleGeo = trackGeo(pGeo);
+    particleMat = mats.sakuraPetal;
 
-  const particleMat =
-    style === 'japanese'
-      ? mats.sakuraPetal
-      : style === 'russian'
-        ? mats.shikkuiPlaster
-        : style === 'persian'
-          ? mats.ochrePlaster
-          : mats.brushedGold;
+    if (style === 'mughal') {
+      particleColors = [
+        new THREE.Color(0xea4e6b),
+        new THREE.Color(0xf6aa28),
+        new THREE.Color(0xfff4d6),
+        new THREE.Color(0xf0788d),
+      ];
+    } else if (style === 'persian') {
+      particleColors = [
+        new THREE.Color(0xf4bc64),
+        new THREE.Color(0xe89078),
+        new THREE.Color(0xf8de9c),
+        new THREE.Color(0xf2a69c),
+      ];
+    } else {
+      particleColors = [
+        new THREE.Color(0xffbfd4),
+        new THREE.Color(0xffdce8),
+        new THREE.Color(0xfff4f8),
+        new THREE.Color(0xffadc7),
+      ];
+    }
+  }
 
   const particleInst = new THREE.InstancedMesh(particleGeo, particleMat, maxParticles);
   particleInst.frustumCulled = false;
+  const pColTmp = new THREE.Color();
+  for (let i = 0; i < maxParticles; i++) {
+    pColTmp.copy(particleColors[i % particleColors.length]);
+    particleInst.setColorAt(i, pColTmp);
+  }
+  if (particleInst.instanceColor) particleInst.instanceColor.needsUpdate = true;
+  particleInst.computeBoundingSphere();
   group.add(particleInst);
 
   const particles: FloatingParticle[] = [];
@@ -2688,13 +2769,303 @@ export function buildSakuraAndKoi(
       x: (rand() - 0.5) * 54,
       y: 0.4 + rand() * 14,
       z: (rand() - 0.5) * 48 + 2,
-      vy: style === 'persian' ? 0.15 + rand() * 0.25 : 0.52 + rand() * 0.62,
+      vy: style === 'persian' ? 0.24 + rand() * 0.28 : 0.52 + rand() * 0.62,
       phase: rand() * Math.PI * 2,
       spinSpeedX: 1.1 + rand() * 2.0,
       spinSpeedY: 0.8 + rand() * 1.7,
       swayAmp: 0.6 + rand() * 1.1,
-      scale: style === 'russian' ? 0.65 + rand() * 0.55 : 0.75 + rand() * 0.6,
+      scale: style === 'russian' ? 0.72 + rand() * 0.52 : 0.78 + rand() * 0.58,
     });
+  }
+
+  // =========================================================================
+  // 3B. ARTICULATED WING-FLAPPING BIOME BIRDS & FLUTTERING BUTTERFLIES
+  // =========================================================================
+  const birdActors: FlyingBirdActor[] = [];
+  const butterflyActors: FlyingButterflyActor[] = [];
+
+  // Shared bird geometry builders
+  const birdBodyProfile = [
+    new THREE.Vector2(0.0, 0.34),
+    new THREE.Vector2(0.045, 0.29),
+    new THREE.Vector2(0.088, 0.16),
+    new THREE.Vector2(0.098, 0.02),
+    new THREE.Vector2(0.072, -0.14),
+    new THREE.Vector2(0.035, -0.28),
+    new THREE.Vector2(0.0, -0.32),
+  ];
+  const birdBodyGeo = trackGeo(new THREE.LatheGeometry(birdBodyProfile, 12));
+  birdBodyGeo.rotateX(Math.PI / 2);
+
+  const birdBeakGeo = trackGeo(new THREE.ConeGeometry(0.026, 0.14, 6));
+  birdBeakGeo.rotateX(Math.PI / 2);
+
+  const birdEyeGeo = trackGeo(new THREE.SphereGeometry(0.015, 6, 5));
+
+  const tailFanShape = new THREE.Shape();
+  tailFanShape.moveTo(0, 0);
+  tailFanShape.lineTo(-0.12, -0.26);
+  tailFanShape.quadraticCurveTo(0, -0.31, 0.12, -0.26);
+  tailFanShape.closePath();
+  const tailFanGeo = trackGeo(new THREE.ShapeGeometry(tailFanShape));
+  tailFanGeo.rotateX(Math.PI / 2);
+
+  // Swept airfoil wing blade (extends along +X from shoulder x=0 to tip x=0.88)
+  const wingInnerShape = new THREE.Shape();
+  wingInnerShape.moveTo(0, 0.1);
+  wingInnerShape.quadraticCurveTo(0.24, 0.14, 0.52, 0.02);
+  wingInnerShape.lineTo(0.5, -0.14);
+  wingInnerShape.quadraticCurveTo(0.22, -0.18, 0, -0.11);
+  wingInnerShape.closePath();
+  const wingInnerGeo = trackGeo(
+    new THREE.ExtrudeGeometry(wingInnerShape, {
+      depth: 0.016,
+      bevelEnabled: true,
+      bevelThickness: 0.004,
+      bevelSize: 0.004,
+      bevelSegments: 1,
+    }),
+  );
+  wingInnerGeo.translate(0, 0, -0.008);
+  wingInnerGeo.rotateX(Math.PI / 2);
+
+  const wingTipShape = new THREE.Shape();
+  wingTipShape.moveTo(0.48, 0.02);
+  wingTipShape.quadraticCurveTo(0.74, -0.06, 0.94, -0.22);
+  wingTipShape.quadraticCurveTo(0.76, -0.24, 0.48, -0.13);
+  wingTipShape.closePath();
+  const wingTipGeo = trackGeo(
+    new THREE.ExtrudeGeometry(wingTipShape, {
+      depth: 0.012,
+      bevelEnabled: true,
+      bevelThickness: 0.003,
+      bevelSize: 0.003,
+      bevelSegments: 1,
+    }),
+  );
+  wingTipGeo.translate(0, 0, -0.006);
+  wingTipGeo.rotateX(Math.PI / 2);
+
+  const craneNeckGeo = trackGeo(
+    new THREE.TubeGeometry(
+      new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0.02, 0.25),
+        new THREE.Vector3(0, 0.06, 0.42),
+        new THREE.Vector3(0, 0.05, 0.56),
+      ]),
+      6,
+      0.026,
+      6,
+      false,
+    ),
+  );
+  const craneCrownGeo = trackGeo(new THREE.SphereGeometry(0.028, 7, 5));
+  const craneLegGeo = trackGeo(new THREE.CylinderGeometry(0.009, 0.007, 0.42, 5));
+  craneLegGeo.rotateX(Math.PI / 2);
+
+  const buildBird = (idx: number, isBunting = false) => {
+    const bird = new THREE.Group();
+    const isCraneOrEgret =
+      !isBunting && (style === 'japanese' || (style === 'mughal' && idx % 2 === 1));
+
+    let bodyMat: THREE.Material = mats.swanWhite;
+    let wingMat: THREE.Material = mats.swanWhite;
+    let tipMat: THREE.Material = mats.wroughtIron;
+    let beakMat: THREE.Material = mats.swanBeakOrange;
+
+    if (isBunting) {
+      bodyMat = idx % 2 === 0 ? mats.swanWhite : mats.brushedGold;
+      wingMat = mats.swanWhite;
+      tipMat = mats.wroughtIron;
+      beakMat = mats.camelDarkFur;
+    } else if (style === 'victorian') {
+      bodyMat = mats.shikkuiPlaster;
+      wingMat = mats.victorianSlate;
+      tipMat = mats.wroughtIron;
+      beakMat = mats.swanBeakOrange;
+    } else if (style === 'mughal' && idx % 2 === 0) {
+      // Mughal rose-ringed emerald parakeet
+      bodyMat = mats.bambooGreen;
+      wingMat = mats.bambooGreen;
+      tipMat = mats.brushedGold;
+      beakMat = mats.vermilionLacquer;
+    } else if (style === 'persian') {
+      // Oasis turquoise & desert ochre falcon / roller
+      bodyMat = mats.camelCoat;
+      wingMat = mats.turquoiseGlaze;
+      tipMat = mats.brushedGold;
+      beakMat = mats.wroughtIron;
+    }
+
+    const body = new THREE.Mesh(birdBodyGeo, bodyMat);
+    body.castShadow = true;
+    bird.add(body);
+
+    const tail = new THREE.Mesh(tailFanGeo, tipMat);
+    tail.position.set(0, 0.01, -0.28);
+    bird.add(tail);
+
+    const headZ = isCraneOrEgret ? 0.58 : 0.31;
+    const headY = isCraneOrEgret ? 0.05 : 0.02;
+
+    if (isCraneOrEgret) {
+      const neck = new THREE.Mesh(craneNeckGeo, bodyMat);
+      bird.add(neck);
+
+      const head = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.044, 8, 6)), bodyMat);
+      head.position.set(0, headY, headZ);
+      bird.add(head);
+
+      if (style === 'japanese') {
+        const crown = new THREE.Mesh(craneCrownGeo, mats.vermilionLacquer);
+        crown.scale.set(1, 0.55, 1.25);
+        crown.position.set(0, headY + 0.036, headZ - 0.01);
+        bird.add(crown);
+      }
+
+      for (const side of [-1, 1]) {
+        const leg = new THREE.Mesh(craneLegGeo, mats.wroughtIron);
+        leg.position.set(side * 0.032, -0.02, -0.45);
+        bird.add(leg);
+      }
+    }
+
+    const beak = new THREE.Mesh(birdBeakGeo, beakMat);
+    beak.position.set(0, headY - 0.005, headZ + 0.08);
+    if (isCraneOrEgret) beak.scale.set(0.85, 0.85, 1.45);
+    bird.add(beak);
+
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(birdEyeGeo, mats.wroughtIron);
+      eye.position.set(side * 0.034, headY + 0.018, headZ + 0.02);
+      bird.add(eye);
+    }
+
+    const leftWing = new THREE.Group();
+    leftWing.position.set(0.06, 0.03, 0.06);
+    leftWing.add(new THREE.Mesh(wingInnerGeo, wingMat));
+    leftWing.add(new THREE.Mesh(wingTipGeo, tipMat));
+    bird.add(leftWing);
+
+    const rightWing = new THREE.Group();
+    rightWing.position.set(-0.06, 0.03, 0.06);
+    rightWing.scale.x = -1;
+    rightWing.add(new THREE.Mesh(wingInnerGeo, wingMat));
+    rightWing.add(new THREE.Mesh(wingTipGeo, tipMat));
+    bird.add(rightWing);
+
+    const bScale = isBunting ? 0.56 : isCraneOrEgret ? 1.32 : 0.96 + (idx % 3) * 0.14;
+    bird.scale.setScalar(bScale);
+    bird.rotation.order = 'YXZ';
+    group.add(bird);
+
+    return { bird, leftWing, rightWing };
+  };
+
+  // 6 High-soaring regional birds circling gracefully above pond & palace spires
+  for (let i = 0; i < 6; i++) {
+    const built = buildBird(i, false);
+    birdActors.push({
+      group: built.bird,
+      leftWing: built.leftWing,
+      rightWing: built.rightWing,
+      centerX: (i % 2 === 0 ? 1.5 : -2.5) + (rand() - 0.5) * 4.5,
+      centerZ: -4.0 + (rand() - 0.5) * 8.0,
+      radiusX: 11.5 + rand() * 7.5,
+      radiusZ: 8.5 + rand() * 5.5,
+      baseY: 8.8 + rand() * 5.2,
+      bobAmp: 0.45 + rand() * 0.45,
+      speed: 0.19 + rand() * 0.08,
+      phase: (i / 6) * Math.PI * 2 + rand() * 0.4,
+      dir: i % 3 === 0 ? -1 : 1,
+      flapSpeed: 5.4 + rand() * 1.4,
+    });
+  }
+
+  if (style === 'russian') {
+    // 5 low-darting winter Snow-Buntings flitting between birches & icy pond
+    for (let i = 0; i < 5; i++) {
+      const built = buildBird(i, true);
+      birdActors.push({
+        group: built.bird,
+        leftWing: built.leftWing,
+        rightWing: built.rightWing,
+        centerX: spec.pondCenter.x + (rand() - 0.5) * 10,
+        centerZ: spec.pondCenter.z - 4.5 + (rand() - 0.5) * 7,
+        radiusX: 4.8 + rand() * 4.2,
+        radiusZ: 3.4 + rand() * 3.0,
+        baseY: 2.2 + rand() * 1.8,
+        bobAmp: 0.35 + rand() * 0.25,
+        speed: 0.42 + rand() * 0.16,
+        phase: rand() * Math.PI * 2,
+        dir: i % 2 === 0 ? 1 : -1,
+        flapSpeed: 10.5 + rand() * 2.5,
+      });
+    }
+  } else {
+    // 10 Articulated Garden Butterflies fluttering over reeds, lotus beds & stone walkways
+    const bfBodyGeo = trackGeo(new THREE.CylinderGeometry(0.011, 0.008, 0.12, 6));
+    bfBodyGeo.rotateX(Math.PI / 2);
+    const bfHeadGeo = trackGeo(new THREE.SphereGeometry(0.014, 6, 5));
+    const bfAntGeo = trackGeo(new THREE.CylinderGeometry(0.0025, 0.0018, 0.055, 4));
+    const bfWingGeo = trackGeo(new THREE.PlaneGeometry(0.16, 0.16));
+    bfWingGeo.translate(0.08, 0, 0);
+    bfWingGeo.rotateX(Math.PI / 2);
+
+    const bfMatIdxByStyle: Record<PalaceStyle, number[]> = {
+      japanese: [2, 3, 1], // Sakura blush, swallowtail cream-gold, sky morpho
+      victorian: [0, 3, 1], // Monarch orange, brimstone yellow, sapphire
+      mughal: [1, 0, 2, 3], // Emerald-turquoise, saffron, crimson-rose, gold
+      persian: [1, 3, 0], // Turquoise, saffron gold, coral-amber
+      russian: [1, 3],
+    };
+    const paletteOrder = bfMatIdxByStyle[style];
+
+    for (let i = 0; i < 10; i++) {
+      const bf = new THREE.Group();
+      const body = new THREE.Mesh(bfBodyGeo, mats.wroughtIron);
+      bf.add(body);
+      const head = new THREE.Mesh(bfHeadGeo, mats.wroughtIron);
+      head.position.set(0, 0.004, 0.064);
+      bf.add(head);
+
+      for (const side of [-1, 1]) {
+        const ant = new THREE.Mesh(bfAntGeo, mats.wroughtIron);
+        ant.position.set(side * 0.012, 0.022, 0.086);
+        ant.rotation.x = 0.72;
+        ant.rotation.z = -side * 0.35;
+        bf.add(ant);
+      }
+
+      const wMat = mats.butterflyWingMaterials[paletteOrder[i % paletteOrder.length]];
+      const leftWing = new THREE.Group();
+      leftWing.position.set(0.006, 0.004, 0.01);
+      leftWing.add(new THREE.Mesh(bfWingGeo, wMat));
+      bf.add(leftWing);
+
+      const rightWing = new THREE.Group();
+      rightWing.position.set(-0.006, 0.004, 0.01);
+      rightWing.scale.x = -1;
+      rightWing.add(new THREE.Mesh(bfWingGeo, wMat));
+      bf.add(rightWing);
+
+      bf.scale.setScalar(1.05 + (i % 3) * 0.22);
+      group.add(bf);
+
+      butterflyActors.push({
+        group: bf,
+        leftWing,
+        rightWing,
+        centerX: (i < 6 ? spec.pondCenter.x : 4.2) + (rand() - 0.5) * 9.5,
+        centerZ: (i < 6 ? spec.pondCenter.z - 1.5 : -2.5) + (rand() - 0.5) * 6.5,
+        radiusX: 2.2 + rand() * 3.4,
+        radiusZ: 1.6 + rand() * 2.4,
+        baseY: 0.78 + rand() * 1.45,
+        speed: 0.42 + rand() * 0.28,
+        phase: rand() * Math.PI * 2,
+        flapSpeed: 14.0 + rand() * 5.0,
+      });
+    }
   }
 
   // =========================================================================
@@ -2994,6 +3365,54 @@ export function buildSakuraAndKoi(
         c.neckGroup.rotation.x = Math.sin(elapsed * 0.9 + c.phase) * 0.08;
         c.tail.rotation.z = Math.sin(elapsed * 1.7 + c.phase) * 0.12;
       }
+    }
+
+    // Animate soaring wing-flapping birds (intermittent wingbeats + smooth thermal glides)
+    for (let i = 0; i < birdActors.length; i++) {
+      const b = birdActors[i];
+      const t = elapsed * b.speed * b.dir + b.phase;
+      const nt = t + 0.025 * b.dir;
+
+      const x = b.centerX + Math.cos(t) * b.radiusX;
+      const z = b.centerZ + Math.sin(t) * b.radiusZ;
+      const y = b.baseY + Math.sin(t * 2.0 + b.phase) * b.bobAmp;
+
+      const nx = b.centerX + Math.cos(nt) * b.radiusX;
+      const nz = b.centerZ + Math.sin(nt) * b.radiusZ;
+      const ny = b.baseY + Math.sin(nt * 2.0 + b.phase) * b.bobAmp;
+
+      b.group.position.set(x, y, z);
+      b.group.rotation.y = Math.atan2(nx - x, nz - z);
+      b.group.rotation.x = -(ny - y) * 1.8;
+      b.group.rotation.z = b.dir * 0.18;
+
+      // Alternate between crisp wingbeats and soaring glides
+      const glideMod = 0.55 + 0.45 * Math.sin(elapsed * 0.65 + b.phase * 2.0);
+      const flapAngle = Math.sin(elapsed * b.flapSpeed + b.phase) * 0.58 * glideMod + 0.06;
+      b.leftWing.rotation.z = flapAngle;
+      b.rightWing.rotation.z = -flapAngle;
+    }
+
+    // Animate fluttering garden butterflies along figure-8 paths
+    for (let i = 0; i < butterflyActors.length; i++) {
+      const bf = butterflyActors[i];
+      const t = elapsed * bf.speed + bf.phase;
+      const nt = t + 0.03;
+
+      const x = bf.centerX + Math.sin(t) * bf.radiusX;
+      const z = bf.centerZ + Math.sin(t * 2.0) * bf.radiusZ * 0.65;
+      const y = bf.baseY + Math.sin(elapsed * 2.6 + bf.phase) * 0.28;
+
+      const nx = bf.centerX + Math.sin(nt) * bf.radiusX;
+      const nz = bf.centerZ + Math.sin(nt * 2.0) * bf.radiusZ * 0.65;
+
+      bf.group.position.set(x, y, z);
+      bf.group.rotation.y = Math.atan2(nx - x, nz - z);
+      bf.group.rotation.x = -0.14 + Math.sin(elapsed * 3.1 + bf.phase) * 0.1;
+
+      const flutter = Math.sin(elapsed * bf.flapSpeed + bf.phase) * 1.12;
+      bf.leftWing.rotation.z = flutter;
+      bf.rightWing.rotation.z = -flutter;
     }
   };
 

@@ -18,12 +18,16 @@ export interface ProceduralTextureSet {
   graniteBump: THREE.CanvasTexture;
   steppingStoneAlbedo: THREE.CanvasTexture;
   steppingStoneBump: THREE.CanvasTexture;
+  stonePathwayAlbedo: THREE.CanvasTexture;
+  stonePathwayBump: THREE.CanvasTexture;
   mountainAlbedo: THREE.CanvasTexture;
   mountainBump: THREE.CanvasTexture;
   terrainAlbedo: THREE.CanvasTexture;
   pondBedAlbedo: THREE.CanvasTexture;
   contactShadow: THREE.CanvasTexture;
   petalAlpha: THREE.CanvasTexture;
+  snowflakeAlpha: THREE.CanvasTexture;
+  butterflyWingAlpha: THREE.CanvasTexture;
   sakuraBarkAlbedo: THREE.CanvasTexture;
   sakuraBarkBump: THREE.CanvasTexture;
   sakuraClusterAlpha: THREE.CanvasTexture;
@@ -374,47 +378,196 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const graniteAlbedo = track(configureTexture(graniteC, true, maxAnisotropy, 1, 1));
   const graniteBump = track(configureTexture(graniteBmpC, false, maxAnisotropy, 1, 1));
 
-  // 6b. Chiseled weathered flagstone texture for stepping stones & bridge approaches
-  const [stepC, stepCtx] = makeCanvas(256, 256);
-  const [stepBmpC, stepBmpCtx] = makeCanvas(256, 256);
-  stepCtx.fillStyle = '#737069';
-  stepCtx.fillRect(0, 0, 256, 256);
-  stepBmpCtx.fillStyle = '#929292';
-  stepBmpCtx.fillRect(0, 0, 256, 256);
+  // 6b. High-detail 512x512 chiseled weathered flagstone texture for stepping stones & bridge approaches
+  const [stepC, stepCtx] = makeCanvas(512, 512);
+  const [stepBmpC, stepBmpCtx] = makeCanvas(512, 512);
+  stepCtx.fillStyle = '#9c9890';
+  stepCtx.fillRect(0, 0, 512, 512);
+  stepBmpCtx.fillStyle = '#9a9a9a';
+  stepBmpCtx.fillRect(0, 0, 512, 512);
   const randStep = seeded(1108);
-  for (let i = 0; i < 2200; i++) {
-    const sx = randStep() * 256;
-    const sy = randStep() * 256;
-    const r = 1.5 + randStep() * 4.5;
+
+  // Subtle sedimentary bedding bands & mineral clouding
+  for (let b = 0; b < 38; b++) {
+    const bx = randStep() * 512;
+    const by = randStep() * 512;
+    const bw = 60 + randStep() * 160;
+    const bh = 16 + randStep() * 48;
+    stepCtx.fillStyle = b % 2 === 0 ? 'rgba(225,220,210,0.16)' : 'rgba(68,64,58,0.14)';
+    stepCtx.fillRect(bx, by, bw, bh);
+    stepBmpCtx.fillStyle = b % 2 === 0 ? 'rgba(205,205,205,0.14)' : 'rgba(95,95,95,0.14)';
+    stepBmpCtx.fillRect(bx, by, bw, bh);
+  }
+
+  // Dense crystalline granite/sandstone mineral grain & chisel pockmarks
+  for (let i = 0; i < 6200; i++) {
+    const sx = randStep() * 512;
+    const sy = randStep() * 512;
+    const r = 1.6 + randStep() * 5.2;
     const shade = randStep();
     stepCtx.fillStyle =
       shade > 0.72
-        ? 'rgba(195,190,178,0.26)'
-        : shade > 0.28
-          ? 'rgba(65,62,56,0.28)'
-          : 'rgba(92,114,68,0.22)'; // Subtle garden moss flecks
-    stepCtx.fillRect(sx, sy, r, r * 0.8);
-    stepBmpCtx.fillStyle = shade > 0.5 ? 'rgba(205,205,205,0.32)' : 'rgba(60,60,60,0.35)';
-    stepBmpCtx.fillRect(sx, sy, r, r * 0.8);
+        ? 'rgba(228,224,214,0.28)'
+        : shade > 0.24
+          ? 'rgba(72,68,60,0.26)'
+          : 'rgba(104,124,78,0.2)';
+    stepCtx.fillRect(sx, sy, r, r * 0.78);
+    stepBmpCtx.fillStyle = shade > 0.5 ? 'rgba(225,225,225,0.38)' : 'rgba(55,55,55,0.4)';
+    stepBmpCtx.fillRect(sx, sy, r, r * 0.78);
   }
-  // Subtle natural stone hairline fractures
-  stepCtx.strokeStyle = 'rgba(42,40,36,0.32)';
-  stepBmpCtx.strokeStyle = 'rgba(30,30,30,0.55)';
-  for (let c = 0; c < 6; c++) {
-    const x0 = randStep() * 256;
-    const y0 = randStep() * 256;
-    const x1 = x0 + (randStep() - 0.5) * 140;
-    const y1 = y0 + (randStep() - 0.5) * 140;
-    for (const ctx of [stepCtx, stepBmpCtx]) {
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.quadraticCurveTo((x0 + x1) * 0.5 + 14, (y0 + y1) * 0.5 - 12, x1, y1);
-      ctx.stroke();
-    }
+
+  // Chiseled dressed rim framing the stepping slab
+  stepCtx.strokeStyle = 'rgba(235, 232, 222, 0.35)';
+  stepCtx.lineWidth = 14;
+  stepCtx.strokeRect(18, 18, 476, 476);
+  stepCtx.strokeStyle = 'rgba(48, 46, 42, 0.42)';
+  stepCtx.lineWidth = 6;
+  stepCtx.strokeRect(6, 6, 500, 500);
+  stepBmpCtx.strokeStyle = 'rgba(235, 235, 235, 0.48)';
+  stepBmpCtx.lineWidth = 14;
+  stepBmpCtx.strokeRect(18, 18, 476, 476);
+
+  // Natural quartz hairline veins & stone fissures
+  for (let c = 0; c < 12; c++) {
+    const x0 = randStep() * 512;
+    const y0 = randStep() * 512;
+    const x1 = x0 + (randStep() - 0.5) * 220;
+    const y1 = y0 + (randStep() - 0.5) * 220;
+    const cx = (x0 + x1) * 0.5 + (randStep() - 0.5) * 44;
+    const cy = (y0 + y1) * 0.5 + (randStep() - 0.5) * 44;
+    stepCtx.strokeStyle = c % 3 === 0 ? 'rgba(236,232,222,0.34)' : 'rgba(42,40,36,0.38)';
+    stepCtx.lineWidth = c % 3 === 0 ? 1.6 : 2.2;
+    stepCtx.beginPath();
+    stepCtx.moveTo(x0, y0);
+    stepCtx.quadraticCurveTo(cx, cy, x1, y1);
+    stepCtx.stroke();
+
+    stepBmpCtx.strokeStyle = c % 3 === 0 ? 'rgba(210,210,210,0.4)' : 'rgba(28,28,28,0.68)';
+    stepBmpCtx.lineWidth = 2.2;
+    stepBmpCtx.beginPath();
+    stepBmpCtx.moveTo(x0, y0);
+    stepBmpCtx.quadraticCurveTo(cx, cy, x1, y1);
+    stepBmpCtx.stroke();
   }
   const steppingStoneAlbedo = track(configureTexture(stepC, true, maxAnisotropy, 1, 1));
   const steppingStoneBump = track(configureTexture(stepBmpC, false, maxAnisotropy, 1, 1));
+
+  // 6b-2. Seamless 512x512 interlocking cobblestone / flagstone walkway paving texture (albedo + bump)
+  const [pathC, pathCtx] = makeCanvas(512, 512);
+  const [pathBmpC, pathBmpCtx] = makeCanvas(512, 512);
+  // Deep weathered mortar / soil joint background
+  pathCtx.fillStyle = '#3c3932';
+  pathCtx.fillRect(0, 0, 512, 512);
+  pathBmpCtx.fillStyle = '#242424';
+  pathBmpCtx.fillRect(0, 0, 512, 512);
+
+  const randPath = seeded(8824);
+  const pathRows = 6;
+  const pathRowH = 512 / pathRows;
+
+  const drawPathStone = (
+    sx: number,
+    sy: number,
+    sw: number,
+    sh: number,
+    tone: number,
+    warmShift: number,
+  ) => {
+    const gap = 5.5;
+    const x = sx + gap;
+    const y = sy + gap;
+    const w = Math.max(12, sw - gap * 2);
+    const h = Math.max(12, sh - gap * 2);
+    const rad = Math.min(10, w * 0.16, h * 0.16);
+
+    const drawRounded = (ctx: CanvasRenderingContext2D, inset = 0) => {
+      const ix = x + inset;
+      const iy = y + inset;
+      const iw = Math.max(4, w - inset * 2);
+      const ih = Math.max(4, h - inset * 2);
+      const ir = Math.max(2, rad - inset * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(ix + ir, iy);
+      ctx.lineTo(ix + iw - ir, iy);
+      ctx.quadraticCurveTo(ix + iw, iy, ix + iw, iy + ir);
+      ctx.lineTo(ix + iw, iy + ih - ir);
+      ctx.quadraticCurveTo(ix + iw, iy + ih, ix + iw - ir, iy + ih);
+      ctx.lineTo(ix + ir, iy + ih);
+      ctx.quadraticCurveTo(ix, iy + ih, ix, iy + ih - ir);
+      ctx.lineTo(ix, iy + ir);
+      ctx.quadraticCurveTo(ix, iy, ix + ir, iy);
+      ctx.closePath();
+    };
+
+    // Neutral light-to-mid mineral tone so vertex colors cleanly drive regional stone hue
+    const baseV = Math.floor(152 + tone * 54);
+    const r = Math.min(242, Math.floor(baseV + warmShift * 14));
+    const g = Math.min(238, Math.floor(baseV + warmShift * 5));
+    const b = Math.max(110, Math.floor(baseV - warmShift * 8));
+
+    // Dark shadow lip & stone face
+    pathCtx.fillStyle = `rgb(${Math.floor(r * 0.72)}, ${Math.floor(g * 0.72)}, ${Math.floor(b * 0.72)})`;
+    drawRounded(pathCtx, 0);
+    pathCtx.fill();
+
+    const faceGrad = pathCtx.createLinearGradient(x, y, x + w, y + h);
+    faceGrad.addColorStop(0, `rgb(${Math.min(248, r + 18)}, ${Math.min(246, g + 16)}, ${Math.min(240, b + 14)})`);
+    faceGrad.addColorStop(0.55, `rgb(${r}, ${g}, ${b})`);
+    faceGrad.addColorStop(1, `rgb(${Math.floor(r * 0.86)}, ${Math.floor(g * 0.86)}, ${Math.floor(b * 0.86)})`);
+    pathCtx.fillStyle = faceGrad;
+    drawRounded(pathCtx, 3);
+    pathCtx.fill();
+
+    // Bump bevel: raised flat stone face above recessed mortar seam
+    pathBmpCtx.fillStyle = '#9a9a9a';
+    drawRounded(pathBmpCtx, 0);
+    pathBmpCtx.fill();
+    pathBmpCtx.fillStyle = `rgb(${Math.floor(190 + tone * 45)}, ${Math.floor(190 + tone * 45)}, ${Math.floor(190 + tone * 45)})`;
+    drawRounded(pathBmpCtx, 4);
+    pathBmpCtx.fill();
+
+    // Subtle stone grain speckles & chisel pits inside paver
+    const grainCount = 28;
+    for (let k = 0; k < grainCount; k++) {
+      const gx = x + 6 + randPath() * Math.max(4, w - 12);
+      const gy = y + 6 + randPath() * Math.max(4, h - 12);
+      const gs = 1.5 + randPath() * 3.5;
+      const light = randPath() > 0.48;
+      pathCtx.fillStyle = light ? 'rgba(245,242,234,0.22)' : 'rgba(48,46,40,0.22)';
+      pathCtx.fillRect(gx, gy, gs, gs);
+      pathBmpCtx.fillStyle = light ? 'rgba(240,240,240,0.28)' : 'rgba(65,65,65,0.32)';
+      pathBmpCtx.fillRect(gx, gy, gs, gs);
+    }
+  };
+
+  for (let row = 0; row < pathRows; row++) {
+    const sy = row * pathRowH;
+    // Generate wrapped stone widths summing exactly to 512 so horizontal repeat is seamless
+    const widths: number[] = [];
+    let sum = 0;
+    while (sum < 512) {
+      const remaining = 512 - sum;
+      const w = remaining < 125 ? remaining : 74 + Math.floor(randPath() * 68);
+      widths.push(w);
+      sum += w;
+    }
+    const rowOffset = (row % 2) * 44;
+    let curX = -rowOffset;
+    for (let c = 0; c < widths.length + 1; c++) {
+      const w = widths[c % widths.length];
+      const tone = randPath();
+      const warmShift = (randPath() - 0.35) * 1.4;
+      drawPathStone(curX, sy, w, pathRowH, tone, warmShift);
+      if (curX < 0) {
+        drawPathStone(curX + 512, sy, w, pathRowH, tone, warmShift);
+      }
+      curX += w;
+      if (curX >= 512) break;
+    }
+  }
+
+  const stonePathwayAlbedo = track(configureTexture(pathC, true, maxAnisotropy, 1, 1));
+  const stonePathwayBump = track(configureTexture(pathBmpC, false, maxAnisotropy, 1, 1));
 
   // 6c. Volcanic mountain ridge rock & snow striations (albedo + bump)
   const [mtnC, mtnCtx] = makeCanvas(512, 512);
@@ -493,25 +646,145 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   shadowCtx.fillRect(0, 0, 256, 256);
   const contactShadow = track(configureTexture(shadowC, false, 1, 1, 1));
 
-  // 10. Notched cherry blossom petal alpha mask
-  const [petalC, petalCtx] = makeCanvas(128, 128);
-  petalCtx.clearRect(0, 0, 128, 128);
-  const pGrad = petalCtx.createLinearGradient(64, 118, 64, 12);
-  pGrad.addColorStop(0, '#f39ab6');
-  pGrad.addColorStop(0.55, '#ffd4e2');
-  pGrad.addColorStop(1, '#fff6f9');
+  // 10. Detailed neutral veined blossom petal alpha mask (tinted per-biome via setColorAt)
+  const [petalC, petalCtx] = makeCanvas(256, 256);
+  petalCtx.clearRect(0, 0, 256, 256);
+  const pGrad = petalCtx.createLinearGradient(128, 236, 128, 22);
+  pGrad.addColorStop(0, '#ded6da');
+  pGrad.addColorStop(0.55, '#f6f2f4');
+  pGrad.addColorStop(1, '#ffffff');
   petalCtx.fillStyle = pGrad;
   petalCtx.beginPath();
-  petalCtx.moveTo(64, 114);
-  petalCtx.bezierCurveTo(22, 92, 16, 40, 44, 18);
-  petalCtx.lineTo(64, 34);
-  petalCtx.lineTo(84, 18);
-  petalCtx.bezierCurveTo(112, 40, 106, 92, 64, 114);
+  petalCtx.moveTo(128, 228);
+  petalCtx.bezierCurveTo(44, 184, 32, 80, 88, 36);
+  petalCtx.lineTo(128, 68);
+  petalCtx.lineTo(168, 36);
+  petalCtx.bezierCurveTo(224, 80, 212, 184, 128, 228);
   petalCtx.closePath();
   petalCtx.fill();
-  const petalAlpha = track(configureTexture(petalC, true, 1, 1, 1));
+  // Delicate botanical petal veins radiating from base
+  petalCtx.strokeStyle = 'rgba(205, 192, 198, 0.42)';
+  petalCtx.lineWidth = 2.2;
+  for (const vx of [-36, -16, 0, 16, 36]) {
+    petalCtx.beginPath();
+    petalCtx.moveTo(128, 222);
+    petalCtx.quadraticCurveTo(128 + vx * 0.6, 140, 128 + vx * 1.45, 58);
+    petalCtx.stroke();
+  }
+  const petalAlpha = track(configureTexture(petalC, true, maxAnisotropy, 1, 1));
   petalAlpha.wrapS = THREE.ClampToEdgeWrapping;
   petalAlpha.wrapT = THREE.ClampToEdgeWrapping;
+
+  // 10a-2. Intricate 6-fold crystalline snowflake alpha texture (Russian winter snow)
+  const [flakeC, flakeCtx] = makeCanvas(256, 256);
+  flakeCtx.clearRect(0, 0, 256, 256);
+  flakeCtx.save();
+  flakeCtx.translate(128, 128);
+  flakeCtx.strokeStyle = '#ffffff';
+  flakeCtx.lineCap = 'round';
+
+  // Central frosted hexagon core
+  flakeCtx.fillStyle = 'rgba(240, 248, 255, 0.9)';
+  flakeCtx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const x = Math.cos(a) * 26;
+    const y = Math.sin(a) * 26;
+    if (i === 0) flakeCtx.moveTo(x, y);
+    else flakeCtx.lineTo(x, y);
+  }
+  flakeCtx.closePath();
+  flakeCtx.fill();
+
+  for (let arm = 0; arm < 6; arm++) {
+    flakeCtx.save();
+    flakeCtx.rotate((arm / 6) * Math.PI * 2);
+    // Main crystal spine
+    flakeCtx.lineWidth = 7;
+    flakeCtx.beginPath();
+    flakeCtx.moveTo(0, 0);
+    flakeCtx.lineTo(0, -110);
+    flakeCtx.stroke();
+    // Symmetrical dendritic branches
+    for (const [by, bLen, bw] of [
+      [-42, 34, 5.5],
+      [-68, 42, 5.0],
+      [-90, 26, 4.2],
+    ]) {
+      flakeCtx.lineWidth = bw;
+      flakeCtx.beginPath();
+      flakeCtx.moveTo(0, by);
+      flakeCtx.lineTo(-bLen * 0.72, by - bLen * 0.65);
+      flakeCtx.moveTo(0, by);
+      flakeCtx.lineTo(bLen * 0.72, by - bLen * 0.65);
+      flakeCtx.stroke();
+    }
+    flakeCtx.restore();
+  }
+  flakeCtx.restore();
+  const snowflakeAlpha = track(configureTexture(flakeC, true, maxAnisotropy, 1, 1));
+  snowflakeAlpha.wrapS = THREE.ClampToEdgeWrapping;
+  snowflakeAlpha.wrapT = THREE.ClampToEdgeWrapping;
+
+  // 10a-3. Veined stained-glass butterfly wing alpha texture (neutral bright cells + dark veins/margin)
+  const [bfC, bfCtx] = makeCanvas(256, 256);
+  bfCtx.clearRect(0, 0, 256, 256);
+  // Wing outline spanning UV [0..1] from hinge x=8 outward to tip x=244
+  bfCtx.fillStyle = '#18151a';
+  bfCtx.beginPath();
+  bfCtx.moveTo(8, 134);
+  // Upper forewing sweep
+  bfCtx.bezierCurveTo(42, 42, 165, 14, 242, 34);
+  bfCtx.bezierCurveTo(248, 72, 220, 114, 178, 134);
+  // Lower hindwing scalloped tail lobe
+  bfCtx.bezierCurveTo(212, 164, 198, 224, 138, 240);
+  bfCtx.bezierCurveTo(72, 244, 22, 198, 8, 152);
+  bfCtx.closePath();
+  bfCtx.fill();
+
+  // Inner luminous wing cells (neutral off-white so material tint colors wing cleanly)
+  bfCtx.fillStyle = '#f6f4f0';
+  bfCtx.beginPath();
+  bfCtx.moveTo(22, 132);
+  bfCtx.bezierCurveTo(54, 58, 152, 34, 218, 48);
+  bfCtx.bezierCurveTo(218, 82, 194, 112, 156, 130);
+  bfCtx.bezierCurveTo(182, 158, 172, 206, 128, 220);
+  bfCtx.bezierCurveTo(74, 222, 36, 186, 22, 146);
+  bfCtx.closePath();
+  bfCtx.fill();
+
+  // Dark wing veins & white marginal spots
+  bfCtx.strokeStyle = '#18151a';
+  bfCtx.lineWidth = 5;
+  for (const [tx, ty] of [
+    [206, 54],
+    [204, 88],
+    [172, 116],
+    [164, 168],
+    [130, 210],
+    [76, 202],
+  ]) {
+    bfCtx.beginPath();
+    bfCtx.moveTo(16, 136);
+    bfCtx.quadraticCurveTo((16 + tx) * 0.5, (136 + ty) * 0.5 - 8, tx, ty);
+    bfCtx.stroke();
+  }
+  bfCtx.fillStyle = '#ffffff';
+  for (const [sx, sy] of [
+    [226, 48],
+    [224, 72],
+    [206, 98],
+    [186, 174],
+    [166, 206],
+    [132, 228],
+  ]) {
+    bfCtx.beginPath();
+    bfCtx.arc(sx, sy, 5.2, 0, Math.PI * 2);
+    bfCtx.fill();
+  }
+  const butterflyWingAlpha = track(configureTexture(bfC, true, maxAnisotropy, 1, 1));
+  butterflyWingAlpha.wrapS = THREE.ClampToEdgeWrapping;
+  butterflyWingAlpha.wrapT = THREE.ClampToEdgeWrapping;
 
   // 10b. Cherry tree bark (mahogany-brown with horizontal lenticel bands)
   const [barkC, barkCtx] = makeCanvas(256, 256);
@@ -1391,12 +1664,16 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     graniteBump,
     steppingStoneAlbedo,
     steppingStoneBump,
+    stonePathwayAlbedo,
+    stonePathwayBump,
     mountainAlbedo,
     mountainBump,
     terrainAlbedo,
     pondBedAlbedo,
     contactShadow,
     petalAlpha,
+    snowflakeAlpha,
+    butterflyWingAlpha,
     sakuraBarkAlbedo,
     sakuraBarkBump,
     sakuraClusterAlpha,
