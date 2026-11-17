@@ -136,6 +136,130 @@ function createCurvedLeafGeometry(): THREE.BufferGeometry {
   return g;
 }
 
+function createPineSprigGeometry(width = 1.18, height = 1.38): THREE.BufferGeometry {
+  const makeCard = (rotY: number, pitchX: number) => {
+    const g = new THREE.PlaneGeometry(width, height, 2, 4);
+    g.translate(0, height * 0.5, 0);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const t = Math.max(0, Math.min(1, y / height));
+      const vFold = Math.abs(x) * 0.16;
+      const arch = Math.pow(t, 1.65) * 0.28;
+      pos.setZ(i, vFold + arch);
+    }
+    g.computeVertexNormals();
+    g.rotateX(pitchX);
+    g.rotateY(rotY);
+    return g;
+  };
+
+  const c1 = makeCard(0, 0.14);
+  const c2 = makeCard(Math.PI * 0.38, -0.1);
+  const merged = mergeGeometries([c1, c2]);
+  c1.dispose();
+  c2.dispose();
+  return merged;
+}
+
+interface PineSprigInstance {
+  pos: THREE.Vector3;
+  rotX: number;
+  rotY: number;
+  rotZ: number;
+  scale: number;
+  color: THREE.Color;
+}
+
+function appendFeatheredCypressTree(opts: {
+  tree: THREE.Group;
+  treeScale: number;
+  height: number;
+  baseRadius: number;
+  mats: SceneMaterialLibrary;
+  trackGeo: <T extends THREE.BufferGeometry>(g: T) => T;
+  rand: () => number;
+  sprigTargets: PineSprigInstance[];
+  palette: THREE.Color[];
+}) {
+  const { tree, treeScale, height, baseRadius, mats, trackGeo, rand, sprigTargets, palette } = opts;
+
+  const rootButtress = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(0.18, 0.34, 0.7, 8)),
+    mats.yakisugiTimber,
+  );
+  rootButtress.position.y = 0.35;
+  rootButtress.castShadow = true;
+  tree.add(rootButtress);
+
+  const trunk = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(0.05, 0.2, height * 0.9, 8)),
+    mats.yakisugiTimber,
+  );
+  trunk.position.y = height * 0.45;
+  trunk.castShadow = true;
+  tree.add(trunk);
+
+  // Ascending interior woody boughs supporting the flame silhouette
+  const innerLimbGeo = trackGeo(new THREE.CylinderGeometry(0.024, 0.055, 1.05, 6));
+  const coneGeo = trackGeo(new THREE.SphereGeometry(0.068, 6, 5));
+  for (let l = 0; l < 8; l++) {
+    const t = l / 7;
+    const ly = 1.25 + t * (height - 2.3);
+    const ang = l * 2.39996 + rand() * 0.35;
+    const limb = new THREE.Mesh(innerLimbGeo, mats.yakisugiTimber);
+    limb.position.set(Math.cos(ang) * 0.26, ly, Math.sin(ang) * 0.26);
+    limb.rotation.z = -Math.cos(ang) * 0.48;
+    limb.rotation.x = Math.sin(ang) * 0.48;
+    limb.scale.setScalar(1 - t * 0.45);
+    tree.add(limb);
+
+    if (l % 2 === 0) {
+      const cone = new THREE.Mesh(coneGeo, mats.camelDarkFur);
+      cone.scale.set(0.85, 1.35, 0.85);
+      cone.position.set(Math.cos(ang) * 0.42, ly + 0.16, Math.sin(ang) * 0.42);
+      tree.add(cone);
+    }
+  }
+
+  tree.updateMatrixWorld(true);
+
+  // Spiraling upward-sweeping textured evergreen sprays forming a lush feathered flame taper
+  const sprigCount = 44;
+  for (let s = 0; s < sprigCount; s++) {
+    const t = s / (sprigCount - 1);
+    const sy = 1.15 + t * (height - 1.05);
+    // Classical Sarv flame envelope: widens near lower-mid, tapers gracefully to sharp spire tip
+    const envelope = Math.sin(Math.pow(t, 0.65) * Math.PI * 0.92) * (1 - t * 0.46) + 0.14 * (1 - t);
+    const radial = Math.max(0.06, baseRadius * envelope * (0.72 + rand() * 0.34));
+    const ang = s * 2.39996 + (rand() - 0.5) * 0.28;
+
+    const localPos = new THREE.Vector3(Math.cos(ang) * radial, sy, Math.sin(ang) * radial);
+    const worldPos = localPos.applyMatrix4(tree.matrixWorld);
+
+    const tiltOut = 0.26 + (1 - t) * 0.26 + (rand() - 0.5) * 0.12;
+    sprigTargets.push({
+      pos: worldPos,
+      rotX: tiltOut,
+      rotY: ang + Math.PI * 0.5 + (rand() - 0.5) * 0.35,
+      rotZ: (rand() - 0.5) * 0.24,
+      scale: (0.72 + (1 - t) * 0.58) * (0.86 + rand() * 0.26) * treeScale,
+      color: palette[s % palette.length],
+    });
+  }
+
+  // Crown spire tip spray
+  sprigTargets.push({
+    pos: new THREE.Vector3(0, height - 0.08, 0).applyMatrix4(tree.matrixWorld),
+    rotX: 0.06,
+    rotY: rand() * Math.PI * 2,
+    rotZ: 0.04,
+    scale: 0.65 * treeScale,
+    color: palette[palette.length - 1],
+  });
+}
+
 function createKoiActor(
   mat: THREE.MeshPhysicalMaterial,
   mats: SceneMaterialLibrary,
@@ -1027,8 +1151,7 @@ export function buildSakuraAndKoi(
   // =========================================================================
   // 1. BIOME-SPECIFIC TREES
   // =========================================================================
-  if (style === 'japanese' || style === 'victorian') {
-    const isSakura = style === 'japanese';
+  if (style === 'japanese') {
     const foliageAnchors: Array<{ pos: THREE.Vector3; radius: number }> = [];
 
     for (const tSpec of treeSpecs) {
@@ -1047,7 +1170,7 @@ export function buildSakuraAndKoi(
       sh.position.y = 0.04;
       tree.add(sh);
 
-      const barkMat = isSakura ? mats.sakuraBark : mats.yakisugiTimber;
+      const barkMat = mats.sakuraBark;
 
       const root = new THREE.Mesh(
         trackGeo(new THREE.CylinderGeometry(0.28, 0.52, 0.58, 9)),
@@ -1154,112 +1277,269 @@ export function buildSakuraAndKoi(
       });
     }
 
-    if (isSakura) {
-      const sprigsPerAnchor = 10;
-      const blossomGeo = trackGeo(createCrossedClusterGeometry(0.95));
-      const blossomInst = new THREE.InstancedMesh(
-        blossomGeo,
-        mats.sakuraBlossom,
-        foliageAnchors.length * sprigsPerAnchor,
-      );
-      blossomInst.castShadow = true;
-      blossomInst.receiveShadow = true;
+    const sprigsPerAnchor = 10;
+    const blossomGeo = trackGeo(createCrossedClusterGeometry(0.95));
+    const blossomInst = new THREE.InstancedMesh(
+      blossomGeo,
+      mats.sakuraBlossom,
+      foliageAnchors.length * sprigsPerAnchor,
+    );
+    blossomInst.castShadow = true;
+    blossomInst.receiveShadow = true;
 
-      const leavesPerAnchor = 11;
-      const leafGeo = trackGeo(createCurvedLeafGeometry());
-      const leafInst = new THREE.InstancedMesh(
-        leafGeo,
-        mats.sakuraLeaf,
-        foliageAnchors.length * leavesPerAnchor,
-      );
-      leafInst.castShadow = true;
-      leafInst.receiveShadow = true;
+    const leavesPerAnchor = 11;
+    const leafGeo = trackGeo(createCurvedLeafGeometry());
+    const leafInst = new THREE.InstancedMesh(
+      leafGeo,
+      mats.sakuraLeaf,
+      foliageAnchors.length * leavesPerAnchor,
+    );
+    leafInst.castShadow = true;
+    leafInst.receiveShadow = true;
 
-      const blossomPalette = [
-        new THREE.Color(0xffffff),
-        new THREE.Color(0xffdae7),
-        new THREE.Color(0xffc2d7),
-        new THREE.Color(0xfff1f6),
-      ];
-      const leafPalette = [
-        new THREE.Color(0xdcf0c0),
-        new THREE.Color(0xc5e4a5),
-        new THREE.Color(0xe6d6b0),
-        new THREE.Color(0xb2d896),
-      ];
-      const colorTmp = new THREE.Color();
+    const blossomPalette = [
+      new THREE.Color(0xffffff),
+      new THREE.Color(0xffdae7),
+      new THREE.Color(0xffc2d7),
+      new THREE.Color(0xfff1f6),
+    ];
+    const leafPalette = [
+      new THREE.Color(0xdcf0c0),
+      new THREE.Color(0xc5e4a5),
+      new THREE.Color(0xe6d6b0),
+      new THREE.Color(0xb2d896),
+    ];
+    const colorTmp = new THREE.Color();
 
-      let sIdx = 0;
-      let lIdx = 0;
-      for (const anchor of foliageAnchors) {
-        for (let i = 0; i < sprigsPerAnchor; i++) {
-          const theta = rand() * Math.PI * 2;
-          const phi = Math.acos(2 * rand() - 1);
-          const r = Math.pow(rand(), 0.55) * anchor.radius;
-          _vec3A.set(
-            anchor.pos.x + r * Math.sin(phi) * Math.cos(theta),
-            anchor.pos.y + r * Math.cos(phi) * 0.56,
-            anchor.pos.z + r * Math.sin(phi) * Math.sin(theta),
-          );
-          _euler.set((rand() - 0.5) * 0.8, rand() * Math.PI * 2, (rand() - 0.5) * 0.8);
-          _quat.setFromEuler(_euler);
-          _scale.setScalar(0.72 + rand() * 0.52);
-          _mat4.compose(_vec3A, _quat, _scale);
-          blossomInst.setMatrixAt(sIdx, _mat4);
-          colorTmp.copy(blossomPalette[Math.floor(rand() * blossomPalette.length)]);
-          blossomInst.setColorAt(sIdx, colorTmp);
-          sIdx++;
-        }
-
-        for (let j = 0; j < leavesPerAnchor; j++) {
-          const theta = rand() * Math.PI * 2;
-          const r = (0.18 + Math.pow(rand(), 0.65) * 0.88) * anchor.radius;
-          const yOff = (rand() - 0.45) * anchor.radius * 0.68;
-          _vec3A.set(
-            anchor.pos.x + Math.cos(theta) * r,
-            anchor.pos.y + yOff,
-            anchor.pos.z + Math.sin(theta) * r,
-          );
-          _euler.set(0.45 + rand() * 0.85, theta + (rand() - 0.5) * 0.8, (rand() - 0.5) * 0.6);
-          _quat.setFromEuler(_euler);
-          _scale.setScalar(0.75 + rand() * 0.55);
-          _mat4.compose(_vec3A, _quat, _scale);
-          leafInst.setMatrixAt(lIdx, _mat4);
-          colorTmp.copy(leafPalette[Math.floor(rand() * leafPalette.length)]);
-          leafInst.setColorAt(lIdx, colorTmp);
-          lIdx++;
-        }
+    let sIdx = 0;
+    let lIdx = 0;
+    for (const anchor of foliageAnchors) {
+      for (let i = 0; i < sprigsPerAnchor; i++) {
+        const theta = rand() * Math.PI * 2;
+        const phi = Math.acos(2 * rand() - 1);
+        const r = Math.pow(rand(), 0.55) * anchor.radius;
+        _vec3A.set(
+          anchor.pos.x + r * Math.sin(phi) * Math.cos(theta),
+          anchor.pos.y + r * Math.cos(phi) * 0.56,
+          anchor.pos.z + r * Math.sin(phi) * Math.sin(theta),
+        );
+        _euler.set((rand() - 0.5) * 0.8, rand() * Math.PI * 2, (rand() - 0.5) * 0.8);
+        _quat.setFromEuler(_euler);
+        _scale.setScalar(0.72 + rand() * 0.52);
+        _mat4.compose(_vec3A, _quat, _scale);
+        blossomInst.setMatrixAt(sIdx, _mat4);
+        colorTmp.copy(blossomPalette[Math.floor(rand() * blossomPalette.length)]);
+        blossomInst.setColorAt(sIdx, colorTmp);
+        sIdx++;
       }
-      blossomInst.instanceMatrix.needsUpdate = true;
-      if (blossomInst.instanceColor) blossomInst.instanceColor.needsUpdate = true;
-      blossomInst.computeBoundingSphere();
-      group.add(blossomInst);
 
-      leafInst.instanceMatrix.needsUpdate = true;
-      if (leafInst.instanceColor) leafInst.instanceColor.needsUpdate = true;
-      leafInst.computeBoundingSphere();
-      group.add(leafInst);
-    } else {
-      const clustersPerAnchor = 13;
+      for (let j = 0; j < leavesPerAnchor; j++) {
+        const theta = rand() * Math.PI * 2;
+        const r = (0.18 + Math.pow(rand(), 0.65) * 0.88) * anchor.radius;
+        const yOff = (rand() - 0.45) * anchor.radius * 0.68;
+        _vec3A.set(
+          anchor.pos.x + Math.cos(theta) * r,
+          anchor.pos.y + yOff,
+          anchor.pos.z + Math.sin(theta) * r,
+        );
+        _euler.set(0.45 + rand() * 0.85, theta + (rand() - 0.5) * 0.8, (rand() - 0.5) * 0.6);
+        _quat.setFromEuler(_euler);
+        _scale.setScalar(0.75 + rand() * 0.55);
+        _mat4.compose(_vec3A, _quat, _scale);
+        leafInst.setMatrixAt(lIdx, _mat4);
+        colorTmp.copy(leafPalette[Math.floor(rand() * leafPalette.length)]);
+        leafInst.setColorAt(lIdx, colorTmp);
+        lIdx++;
+      }
+    }
+    blossomInst.instanceMatrix.needsUpdate = true;
+    if (blossomInst.instanceColor) blossomInst.instanceColor.needsUpdate = true;
+    blossomInst.computeBoundingSphere();
+    group.add(blossomInst);
+
+    leafInst.instanceMatrix.needsUpdate = true;
+    if (leafInst.instanceColor) leafInst.instanceColor.needsUpdate = true;
+    leafInst.computeBoundingSphere();
+    group.add(leafInst);
+  } else if (style === 'victorian') {
+    // Victorian English Estate Garden: Gnarled Oaks + Flowering Hawthorns + Sculpted Yew Columns
+    const oakAnchors: Array<{ pos: THREE.Vector3; radius: number }> = [];
+    const hawthornAnchors: Array<{ pos: THREE.Vector3; radius: number }> = [];
+    const yewSprigs: PineSprigInstance[] = [];
+    const yewPalette = [
+      new THREE.Color(0x284e2d),
+      new THREE.Color(0x336037),
+      new THREE.Color(0x204224),
+    ];
+
+    treeSpecs.forEach((tSpec, idx) => {
+      const ty = groundHeightAt(tSpec.x, tSpec.z, style);
+      const tree = new THREE.Group();
+      tree.position.set(tSpec.x, ty, tSpec.z);
+      tree.rotation.y = tSpec.rot;
+      tree.scale.setScalar(tSpec.scale);
+      group.add(tree);
+
+      const sh = new THREE.Mesh(
+        trackGeo(new THREE.PlaneGeometry(7.0, 7.0)),
+        mats.contactShadowMat,
+      );
+      sh.rotation.x = -Math.PI / 2;
+      sh.position.y = 0.04;
+      tree.add(sh);
+
+      if (idx % 4 === 3) {
+        // Sculpted Victorian Ornamental English Yew / Garden Cypress column
+        appendFeatheredCypressTree({
+          tree,
+          treeScale: tSpec.scale,
+          height: 6.4,
+          baseRadius: 0.92,
+          mats,
+          trackGeo,
+          rand,
+          sprigTargets: yewSprigs,
+          palette: yewPalette,
+        });
+        return;
+      }
+
+      const isHawthorn = idx % 3 === 1;
+      const barkMat = mats.yakisugiTimber;
+
+      const root = new THREE.Mesh(
+        trackGeo(new THREE.CylinderGeometry(0.3, 0.56, 0.62, 9)),
+        barkMat,
+      );
+      root.position.y = 0.28;
+      root.castShadow = true;
+      tree.add(root);
+
+      for (let r = 0; r < 4; r++) {
+        const ra = (r / 4) * Math.PI * 2 + rand() * 0.45;
+        const rootSpurCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(Math.cos(ra) * 0.18, 0.5, Math.sin(ra) * 0.18),
+          new THREE.Vector3(Math.cos(ra) * 0.52, 0.14, Math.sin(ra) * 0.52),
+          new THREE.Vector3(Math.cos(ra) * 0.92, -0.02, Math.sin(ra) * 0.92),
+        ]);
+        const spur = new THREE.Mesh(
+          trackGeo(new THREE.TubeGeometry(rootSpurCurve, 6, 0.11, 6, false)),
+          barkMat,
+        );
+        spur.castShadow = true;
+        tree.add(spur);
+      }
+
+      const leanX = (rand() - 0.5) * 0.95;
+      const leanZ = (rand() - 0.5) * 0.95;
+      const trunkCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(leanX * 0.3, 1.35, leanZ * 0.3),
+        new THREE.Vector3(leanX * 0.75, 2.75, leanZ * 0.75),
+        new THREE.Vector3(leanX, 3.95, leanZ),
+      ]);
+      const trunk = new THREE.Mesh(
+        trackGeo(new THREE.TubeGeometry(trunkCurve, 14, 0.27, 9, false)),
+        barkMat,
+      );
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+      tree.add(trunk);
+
+      tree.updateMatrixWorld(true);
+
+      const branchCount = 5;
+      for (let b = 0; b < branchCount; b++) {
+        const ang = (b / branchCount) * Math.PI * 2 + rand() * 0.42;
+        const reach = 2.15 + rand() * 1.1;
+        const endY = 4.2 + rand() * 1.2;
+        const startPt = trunkCurve.getPoint(0.56 + (b % 3) * 0.14);
+        const midPt = new THREE.Vector3(
+          startPt.x + Math.cos(ang) * reach * 0.52,
+          startPt.y + 0.85,
+          startPt.z + Math.sin(ang) * reach * 0.52,
+        );
+        const tipPt = new THREE.Vector3(
+          startPt.x + Math.cos(ang) * reach,
+          endY,
+          startPt.z + Math.sin(ang) * reach,
+        );
+
+        const brCurve = new THREE.CatmullRomCurve3([startPt, midPt, tipPt]);
+        const br = new THREE.Mesh(
+          trackGeo(new THREE.TubeGeometry(brCurve, 10, 0.115, 6, false)),
+          barkMat,
+        );
+        br.castShadow = true;
+        tree.add(br);
+
+        for (let tw = 0; tw < 2; tw++) {
+          const twigOrigin = brCurve.getPoint(0.54 + tw * 0.28);
+          const twigAng = ang + (tw === 0 ? 0.55 : -0.55) + (rand() - 0.5) * 0.25;
+          const twigLen = 1.1 + rand() * 0.55;
+          const twigEnd = new THREE.Vector3(
+            twigOrigin.x + Math.cos(twigAng) * twigLen,
+            twigOrigin.y + 0.45 + rand() * 0.5,
+            twigOrigin.z + Math.sin(twigAng) * twigLen,
+          );
+          const twigCurve = new THREE.CatmullRomCurve3([
+            twigOrigin,
+            twigOrigin.clone().lerp(twigEnd, 0.5).add(new THREE.Vector3(0, 0.18, 0)),
+            twigEnd,
+          ]);
+          const twigMesh = new THREE.Mesh(
+            trackGeo(new THREE.TubeGeometry(twigCurve, 6, 0.052, 5, false)),
+            barkMat,
+          );
+          twigMesh.castShadow = true;
+          tree.add(twigMesh);
+
+          const wPos = twigEnd.clone().applyMatrix4(tree.matrixWorld);
+          oakAnchors.push({ pos: wPos, radius: 1.24 * tSpec.scale });
+          if (isHawthorn) hawthornAnchors.push({ pos: wPos, radius: 1.1 * tSpec.scale });
+        }
+
+        const tipWorld = tipPt.clone().applyMatrix4(tree.matrixWorld);
+        oakAnchors.push({ pos: tipWorld, radius: 1.4 * tSpec.scale });
+        if (isHawthorn) hawthornAnchors.push({ pos: tipWorld, radius: 1.22 * tSpec.scale });
+      }
+
+      const crownWorld = new THREE.Vector3(leanX, 5.05, leanZ).applyMatrix4(tree.matrixWorld);
+      oakAnchors.push({ pos: crownWorld, radius: 1.68 * tSpec.scale });
+      if (isHawthorn) hawthornAnchors.push({ pos: crownWorld, radius: 1.38 * tSpec.scale });
+    });
+
+    if (oakAnchors.length > 0) {
+      const clustersPerAnchor = 17;
       const canopyGeo = trackGeo(createCrossedClusterGeometry(1.18));
       const canopyInst = new THREE.InstancedMesh(
         canopyGeo,
         mats.greenCanopy,
-        foliageAnchors.length * clustersPerAnchor,
+        oakAnchors.length * clustersPerAnchor,
       );
       canopyInst.castShadow = true;
       canopyInst.receiveShadow = true;
 
-      const oakGreens = [
-        new THREE.Color(0xc5e6a5),
-        new THREE.Color(0x9fd07e),
-        new THREE.Color(0x88be66),
-        new THREE.Color(0xd7eca8),
-      ];
-      const colorTmp = new THREE.Color();
+      const leavesPerAnchor = 12;
+      const leafGeo = trackGeo(createCurvedLeafGeometry());
+      const leafInst = new THREE.InstancedMesh(
+        leafGeo,
+        mats.greenLeaf,
+        oakAnchors.length * leavesPerAnchor,
+      );
+      leafInst.castShadow = true;
 
-      let idx = 0;
-      for (const anchor of foliageAnchors) {
+      const oakGreens = [
+        new THREE.Color(0xcdeaa9),
+        new THREE.Color(0xa6d881),
+        new THREE.Color(0x8bc268),
+        new THREE.Color(0xdcf0ae),
+      ];
+      const cTmp = new THREE.Color();
+      let cIdx = 0;
+      let lIdx = 0;
+
+      for (const anchor of oakAnchors) {
         for (let i = 0; i < clustersPerAnchor; i++) {
           const theta = rand() * Math.PI * 2;
           const phi = Math.acos(2 * rand() - 1);
@@ -1271,33 +1551,120 @@ export function buildSakuraAndKoi(
           );
           _euler.set((rand() - 0.5) * 0.9, rand() * Math.PI * 2, (rand() - 0.5) * 0.9);
           _quat.setFromEuler(_euler);
-          _scale.setScalar(0.8 + rand() * 0.52);
+          _scale.setScalar(0.82 + rand() * 0.52);
           _mat4.compose(_vec3A, _quat, _scale);
-          canopyInst.setMatrixAt(idx, _mat4);
-          colorTmp.copy(oakGreens[Math.floor(rand() * oakGreens.length)]);
-          canopyInst.setColorAt(idx, colorTmp);
-          idx++;
+          canopyInst.setMatrixAt(cIdx, _mat4);
+          cTmp.copy(oakGreens[Math.floor(rand() * oakGreens.length)]);
+          canopyInst.setColorAt(cIdx, cTmp);
+          cIdx++;
+        }
+
+        for (let j = 0; j < leavesPerAnchor; j++) {
+          const theta = rand() * Math.PI * 2;
+          const r = (0.22 + Math.pow(rand(), 0.6) * 0.88) * anchor.radius;
+          const yOff = (rand() - 0.45) * anchor.radius * 0.66;
+          _vec3A.set(
+            anchor.pos.x + Math.cos(theta) * r,
+            anchor.pos.y + yOff,
+            anchor.pos.z + Math.sin(theta) * r,
+          );
+          _euler.set(0.4 + rand() * 0.9, theta + (rand() - 0.5) * 0.8, (rand() - 0.5) * 0.6);
+          _quat.setFromEuler(_euler);
+          _scale.setScalar(0.82 + rand() * 0.56);
+          _mat4.compose(_vec3A, _quat, _scale);
+          leafInst.setMatrixAt(lIdx, _mat4);
+          cTmp.copy(oakGreens[Math.floor(rand() * oakGreens.length)]);
+          leafInst.setColorAt(lIdx, cTmp);
+          lIdx++;
         }
       }
       canopyInst.instanceMatrix.needsUpdate = true;
       if (canopyInst.instanceColor) canopyInst.instanceColor.needsUpdate = true;
       canopyInst.computeBoundingSphere();
       group.add(canopyInst);
+
+      leafInst.instanceMatrix.needsUpdate = true;
+      if (leafInst.instanceColor) leafInst.instanceColor.needsUpdate = true;
+      leafInst.computeBoundingSphere();
+      group.add(leafInst);
+    }
+
+    if (hawthornAnchors.length > 0) {
+      // Creamy-ivory & pale-blush English Hawthorn / Chestnut blossom sprays
+      const bloomsPerAnchor = 7;
+      const bloomGeo = trackGeo(createCrossedClusterGeometry(0.76));
+      const bloomInst = new THREE.InstancedMesh(
+        bloomGeo,
+        mats.sakuraBlossom,
+        hawthornAnchors.length * bloomsPerAnchor,
+      );
+      bloomInst.castShadow = true;
+      const hawthornColors = [
+        new THREE.Color(0xfffaf0),
+        new THREE.Color(0xffeedf),
+        new THREE.Color(0xffe0e8),
+      ];
+      const cTmp = new THREE.Color();
+      let bIdx = 0;
+      for (const anchor of hawthornAnchors) {
+        for (let i = 0; i < bloomsPerAnchor; i++) {
+          const theta = rand() * Math.PI * 2;
+          const phi = Math.acos(2 * rand() - 1);
+          const r = (0.35 + rand() * 0.65) * anchor.radius;
+          _vec3A.set(
+            anchor.pos.x + r * Math.sin(phi) * Math.cos(theta),
+            anchor.pos.y + Math.abs(r * Math.cos(phi)) * 0.58,
+            anchor.pos.z + r * Math.sin(phi) * Math.sin(theta),
+          );
+          _euler.set((rand() - 0.5) * 0.7, rand() * Math.PI * 2, (rand() - 0.5) * 0.7);
+          _quat.setFromEuler(_euler);
+          _scale.setScalar(0.65 + rand() * 0.42);
+          _mat4.compose(_vec3A, _quat, _scale);
+          bloomInst.setMatrixAt(bIdx, _mat4);
+          cTmp.copy(hawthornColors[i % hawthornColors.length]);
+          bloomInst.setColorAt(bIdx, cTmp);
+          bIdx++;
+        }
+      }
+      bloomInst.instanceMatrix.needsUpdate = true;
+      if (bloomInst.instanceColor) bloomInst.instanceColor.needsUpdate = true;
+      bloomInst.computeBoundingSphere();
+      group.add(bloomInst);
+    }
+
+    if (yewSprigs.length > 0) {
+      const yewGeo = trackGeo(createPineSprigGeometry(1.05, 1.25));
+      const yewInst = new THREE.InstancedMesh(yewGeo, mats.pineBough, yewSprigs.length);
+      yewInst.castShadow = true;
+      yewInst.receiveShadow = true;
+      yewSprigs.forEach((sp, i) => {
+        _euler.set(sp.rotX, sp.rotY, sp.rotZ, 'YXZ');
+        _quat.setFromEuler(_euler);
+        _scale.setScalar(sp.scale);
+        _mat4.compose(sp.pos, _quat, _scale);
+        yewInst.setMatrixAt(i, _mat4);
+        yewInst.setColorAt(i, sp.color);
+      });
+      yewInst.instanceMatrix.needsUpdate = true;
+      if (yewInst.instanceColor) yewInst.instanceColor.needsUpdate = true;
+      yewInst.computeBoundingSphere();
+      group.add(yewInst);
     }
   } else if (style === 'russian') {
-    const pineTierGeos = [
-      trackGeo(new THREE.ConeGeometry(2.25, 2.2, 9)),
-      trackGeo(new THREE.ConeGeometry(1.85, 2.0, 9)),
-      trackGeo(new THREE.ConeGeometry(1.42, 1.8, 9)),
-      trackGeo(new THREE.ConeGeometry(1.02, 1.55, 9)),
-      trackGeo(new THREE.ConeGeometry(0.62, 1.25, 9)),
-    ];
-    const snowCapGeos = [
-      trackGeo(new THREE.ConeGeometry(2.05, 0.88, 9)),
-      trackGeo(new THREE.ConeGeometry(1.66, 0.82, 9)),
-      trackGeo(new THREE.ConeGeometry(1.26, 0.74, 9)),
-      trackGeo(new THREE.ConeGeometry(0.88, 0.65, 9)),
-      trackGeo(new THREE.ConeGeometry(0.52, 0.56, 9)),
+    // Russian Winter Taiga: Multi-Bough Snow-Laden Spruces + Frosted Forked Silver Birches
+    const spruceSprigs: PineSprigInstance[] = [];
+    const snowPillowGeo = trackGeo(new THREE.DodecahedronGeometry(0.48, 1));
+    const snowDriftBaseGeo = trackGeo(new THREE.DodecahedronGeometry(0.86, 1));
+    const frostClusterGeo = trackGeo(new THREE.OctahedronGeometry(0.11, 0));
+    const birchLimbGeo = trackGeo(new THREE.CylinderGeometry(0.032, 0.082, 2.2, 6));
+    const birchTwigGeo = trackGeo(new THREE.CylinderGeometry(0.013, 0.026, 1.35, 5));
+    const catkinGeo = trackGeo(new THREE.CylinderGeometry(0.022, 0.014, 0.34, 5));
+
+    const borealGreens = [
+      new THREE.Color(0x2e583f),
+      new THREE.Color(0x3a6a4d),
+      new THREE.Color(0x234731),
+      new THREE.Color(0x4b775a),
     ];
 
     treeSpecs.forEach((tSpec, idx) => {
@@ -1309,78 +1676,268 @@ export function buildSakuraAndKoi(
       group.add(tree);
 
       const sh = new THREE.Mesh(
-        trackGeo(new THREE.PlaneGeometry(6.0, 6.0)),
+        trackGeo(new THREE.PlaneGeometry(6.2, 6.2)),
         mats.contactShadowMat,
       );
       sh.rotation.x = -Math.PI / 2;
       sh.position.y = 0.04;
       tree.add(sh);
 
+      // Undulating snow drift piled around tree root collar
+      const rootDrift = new THREE.Mesh(snowDriftBaseGeo, mats.treeSnow);
+      rootDrift.scale.set(1.15, 0.34, 1.08);
+      rootDrift.position.set(0.05, 0.14, -0.04);
+      rootDrift.receiveShadow = true;
+      tree.add(rootDrift);
+
       if (idx % 3 !== 0) {
+        // Sculpted Snow-Laden Russian Taiga Spruce
         const trunk = new THREE.Mesh(
-          trackGeo(new THREE.CylinderGeometry(0.18, 0.36, 2.3, 8)),
+          trackGeo(new THREE.CylinderGeometry(0.08, 0.34, 6.2, 8)),
           mats.yakisugiTimber,
         );
-        trunk.position.y = 1.15;
+        trunk.position.y = 3.1;
         trunk.castShadow = true;
         tree.add(trunk);
 
-        const heights = [2.25, 3.25, 4.2, 5.1, 5.95];
-        for (let t = 0; t < 5; t++) {
-          const rotOff = (t % 2) * (Math.PI / 9);
-          const bough = new THREE.Mesh(pineTierGeos[t], mats.pineNeedle);
-          bough.position.y = heights[t];
-          bough.rotation.y = rotOff;
-          bough.castShadow = true;
-          tree.add(bough);
-
-          const cap = new THREE.Mesh(snowCapGeos[t], mats.shikkuiPlaster);
-          cap.position.y = heights[t] + 0.52;
-          cap.rotation.y = rotOff;
-          cap.castShadow = true;
-          tree.add(cap);
+        // Exposed dark winter root spurs stepping out of the snow drift
+        for (let r = 0; r < 3; r++) {
+          const ra = (r / 3) * Math.PI * 2 + rand() * 0.5;
+          const spurCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(Math.cos(ra) * 0.14, 0.45, Math.sin(ra) * 0.14),
+            new THREE.Vector3(Math.cos(ra) * 0.46, 0.18, Math.sin(ra) * 0.46),
+            new THREE.Vector3(Math.cos(ra) * 0.78, 0.02, Math.sin(ra) * 0.78),
+          ]);
+          const spur = new THREE.Mesh(
+            trackGeo(new THREE.TubeGeometry(spurCurve, 5, 0.085, 5, false)),
+            mats.yakisugiTimber,
+          );
+          tree.add(spur);
         }
-      } else {
-        const trunk = new THREE.Mesh(
-          trackGeo(new THREE.CylinderGeometry(0.12, 0.28, 4.7, 10)),
-          mats.birchBark,
-        );
-        trunk.position.y = 2.35;
-        trunk.castShadow = true;
-        tree.add(trunk);
 
-        const limbGeo = trackGeo(new THREE.CylinderGeometry(0.036, 0.085, 2.3, 6));
-        const twigGeo = trackGeo(new THREE.CylinderGeometry(0.014, 0.028, 1.25, 5));
-        const catkinGeo = trackGeo(new THREE.CylinderGeometry(0.022, 0.014, 0.32, 5));
-        for (let b = 0; b < 6; b++) {
-          const a = (b / 6) * Math.PI * 2 + 0.3;
-          const ly = 3.9 + (b % 3) * 0.42;
-          const limb = new THREE.Mesh(limbGeo, mats.birchBark);
-          limb.position.set(Math.cos(a) * 0.65, ly, Math.sin(a) * 0.65);
+        tree.updateMatrixWorld(true);
+
+        const tierData = [
+          { y: 1.75, reach: 2.15, boughs: 7 },
+          { y: 2.75, reach: 1.78, boughs: 7 },
+          { y: 3.7, reach: 1.4, boughs: 6 },
+          { y: 4.6, reach: 1.02, boughs: 5 },
+          { y: 5.42, reach: 0.65, boughs: 4 },
+        ];
+
+        tierData.forEach((tier, tIdx) => {
+          for (let b = 0; b < tier.boughs; b++) {
+            const ang = (b / tier.boughs) * Math.PI * 2 + tIdx * 0.46 + (rand() - 0.5) * 0.18;
+            const bLen = tier.reach * (0.88 + rand() * 0.24);
+            const droopY = -0.34 - (1 - tIdx / 5) * 0.22;
+
+            // Curved drooping wooden spruce limb
+            const p0 = new THREE.Vector3(0, tier.y, 0);
+            const p1 = new THREE.Vector3(
+              Math.cos(ang) * bLen * 0.55,
+              tier.y - 0.08,
+              Math.sin(ang) * bLen * 0.55,
+            );
+            const p2 = new THREE.Vector3(
+              Math.cos(ang) * bLen,
+              tier.y + droopY,
+              Math.sin(ang) * bLen,
+            );
+            const bCurve = new THREE.CatmullRomCurve3([p0, p1, p2]);
+            const limb = new THREE.Mesh(
+              trackGeo(new THREE.TubeGeometry(bCurve, 6, 0.042 - tIdx * 0.005, 5, false)),
+              mats.yakisugiTimber,
+            );
+            limb.castShadow = true;
+            tree.add(limb);
+
+            // Sculpted snow pillow resting atop the outer & mid bough
+            const snowMid = new THREE.Mesh(snowPillowGeo, mats.treeSnow);
+            const sW = 0.72 + (1 - tIdx / 5) * 0.55;
+            snowMid.scale.set(sW, 0.24, sW * 1.15);
+            snowMid.position.set(
+              Math.cos(ang) * bLen * 0.58,
+              tier.y + 0.08,
+              Math.sin(ang) * bLen * 0.58,
+            );
+            snowMid.rotation.y = -ang;
+            snowMid.rotation.x = 0.16;
+            snowMid.castShadow = true;
+            snowMid.receiveShadow = true;
+            tree.add(snowMid);
+
+            // Secondary snow tuft hanging near the drooping bough tip
+            const snowTip = new THREE.Mesh(snowPillowGeo, mats.treeSnow);
+            snowTip.scale.set(sW * 0.62, 0.22, sW * 0.72);
+            snowTip.position.set(
+              Math.cos(ang) * bLen * 0.88,
+              tier.y + droopY + 0.12,
+              Math.sin(ang) * bLen * 0.88,
+            );
+            snowTip.rotation.y = -ang;
+            snowTip.rotation.x = 0.25;
+            tree.add(snowTip);
+
+            // Textured evergreen pine-needle bough sprays fanning beneath & beyond the snow
+            for (const frac of [0.5, 0.86]) {
+              const localBoughPt = bCurve.getPoint(frac);
+              localBoughPt.y -= 0.04;
+              const worldPt = localBoughPt.applyMatrix4(tree.matrixWorld);
+              spruceSprigs.push({
+                pos: worldPt,
+                rotX: 1.08 + rand() * 0.28,
+                rotY: ang + (frac < 0.7 ? 0.32 : -0.25),
+                rotZ: (rand() - 0.5) * 0.26,
+                scale: (0.76 + (1 - tIdx / 5) * 0.45) * tSpec.scale,
+                color: borealGreens[(b + tIdx) % borealGreens.length],
+              });
+            }
+          }
+        });
+
+        // Sculpted frost-laden spruce crown tip & snow peak
+        for (let top = 0; top < 4; top++) {
+          const ta = (top / 4) * Math.PI * 2;
+          const tipWorld = new THREE.Vector3(
+            Math.cos(ta) * 0.14,
+            6.05,
+            Math.sin(ta) * 0.14,
+          ).applyMatrix4(tree.matrixWorld);
+          spruceSprigs.push({
+            pos: tipWorld,
+            rotX: 0.36,
+            rotY: ta,
+            rotZ: 0.1,
+            scale: 0.62 * tSpec.scale,
+            color: borealGreens[3],
+          });
+        }
+        const crownSnow = new THREE.Mesh(snowPillowGeo, mats.treeSnow);
+        crownSnow.scale.set(0.54, 0.48, 0.54);
+        crownSnow.position.y = 6.35;
+        tree.add(crownSnow);
+      } else {
+        // Russian Frosted Twin-Stem Silver Birch with snow in forks, drooping twigs, catkins & ice rime
+        const stemCurves = [
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(-0.18, 1.6, 0.12),
+            new THREE.Vector3(-0.32, 3.3, 0.22),
+            new THREE.Vector3(-0.42, 4.95, 0.28),
+          ]),
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0.06, 0.35, -0.04),
+            new THREE.Vector3(0.32, 1.85, -0.18),
+            new THREE.Vector3(0.55, 3.25, -0.26),
+            new THREE.Vector3(0.68, 4.45, -0.3),
+          ]),
+        ];
+
+        stemCurves.forEach((curve, sIdx) => {
+          const stem = new THREE.Mesh(
+            trackGeo(new THREE.TubeGeometry(curve, 12, sIdx === 0 ? 0.19 : 0.13, 8, false)),
+            mats.birchBark,
+          );
+          stem.castShadow = true;
+          tree.add(stem);
+        });
+
+        // Snow wedge packed into the birch twin-trunk fork
+        const forkSnow = new THREE.Mesh(snowPillowGeo, mats.treeSnow);
+        forkSnow.scale.set(0.44, 0.28, 0.42);
+        forkSnow.position.set(0.08, 0.92, -0.04);
+        tree.add(forkSnow);
+
+        for (let b = 0; b < 7; b++) {
+          const a = (b / 7) * Math.PI * 2 + 0.3;
+          const parentCurve = b % 3 === 0 ? stemCurves[1] : stemCurves[0];
+          const origin = parentCurve.getPoint(0.68 + (b % 3) * 0.12);
+
+          const limb = new THREE.Mesh(birchLimbGeo, mats.birchBark);
+          limb.position.set(
+            origin.x + Math.cos(a) * 0.62,
+            origin.y + 0.45,
+            origin.z + Math.sin(a) * 0.62,
+          );
           limb.rotation.z = -Math.cos(a) * 0.66;
           limb.rotation.x = Math.sin(a) * 0.66;
           limb.castShadow = true;
           tree.add(limb);
 
-          // Delicate drooping birch branchlets & golden winter catkins
-          for (const side of [-0.35, 0.35]) {
+          // Snow tuft resting on birch limb fork
+          const limbSnow = new THREE.Mesh(snowPillowGeo, mats.treeSnow);
+          limbSnow.scale.set(0.28, 0.16, 0.28);
+          limbSnow.position.set(
+            origin.x + Math.cos(a) * 0.35,
+            origin.y + 0.32,
+            origin.z + Math.sin(a) * 0.35,
+          );
+          tree.add(limbSnow);
+
+          // Delicate weeping birch branchlets, golden catkins & rime frost crystals
+          for (const side of [-0.36, 0, 0.36]) {
             const ta = a + side;
-            const twig = new THREE.Mesh(twigGeo, mats.yakisugiTimber);
-            twig.position.set(Math.cos(ta) * 1.38, ly + 0.28, Math.sin(ta) * 1.38);
+            const twig = new THREE.Mesh(birchTwigGeo, mats.yakisugiTimber);
+            twig.position.set(
+              origin.x + Math.cos(ta) * 1.38,
+              origin.y + 0.72,
+              origin.z + Math.sin(ta) * 1.38,
+            );
             twig.rotation.z = -Math.cos(ta) * 1.18;
             twig.rotation.x = Math.sin(ta) * 1.18;
             tree.add(twig);
 
-            const catkin = new THREE.Mesh(catkinGeo, mats.brushedGold);
-            catkin.position.set(Math.cos(ta) * 1.72, ly - 0.14, Math.sin(ta) * 1.72);
-            tree.add(catkin);
+            if (side !== 0) {
+              const catkin = new THREE.Mesh(catkinGeo, mats.brushedGold);
+              catkin.position.set(
+                origin.x + Math.cos(ta) * 1.72,
+                origin.y + 0.28,
+                origin.z + Math.sin(ta) * 1.72,
+              );
+              tree.add(catkin);
+            } else {
+              const rime = new THREE.Mesh(frostClusterGeo, mats.treeSnow);
+              rime.scale.set(0.9, 1.6, 0.9);
+              rime.position.set(
+                origin.x + Math.cos(ta) * 1.62,
+                origin.y + 0.46,
+                origin.z + Math.sin(ta) * 1.62,
+              );
+              tree.add(rime);
+            }
           }
         }
       }
     });
+
+    if (spruceSprigs.length > 0) {
+      const spruceGeo = trackGeo(createPineSprigGeometry(1.32, 1.52));
+      const spruceInst = new THREE.InstancedMesh(spruceGeo, mats.pineBough, spruceSprigs.length);
+      spruceInst.castShadow = true;
+      spruceInst.receiveShadow = true;
+      spruceSprigs.forEach((sp, i) => {
+        _euler.set(sp.rotX, sp.rotY, sp.rotZ, 'YXZ');
+        _quat.setFromEuler(_euler);
+        _scale.setScalar(sp.scale);
+        _mat4.compose(sp.pos, _quat, _scale);
+        spruceInst.setMatrixAt(i, _mat4);
+        spruceInst.setColorAt(i, sp.color);
+      });
+      spruceInst.instanceMatrix.needsUpdate = true;
+      if (spruceInst.instanceColor) spruceInst.instanceColor.needsUpdate = true;
+      spruceInst.computeBoundingSphere();
+      group.add(spruceInst);
+    }
   } else if (style === 'mughal') {
+    // Mughal Charbagh Garden: Feathered Sarv Cypresses + Organic Twisting Sacred Banyans
     const banyanAnchors: Array<{ pos: THREE.Vector3; radius: number }> = [];
-    const propRootGeo = trackGeo(new THREE.CylinderGeometry(0.03, 0.052, 3.15, 6));
+    const cypressSprigs: PineSprigInstance[] = [];
+    const cypressPalette = [
+      new THREE.Color(0x2d5e37),
+      new THREE.Color(0x3a7043),
+      new THREE.Color(0x244e2d),
+    ];
+    const figGeo = trackGeo(new THREE.SphereGeometry(0.085, 7, 6));
 
     treeSpecs.forEach((tSpec, idx) => {
       const ty = groundHeightAt(tSpec.x, tSpec.z, style);
@@ -1391,7 +1948,7 @@ export function buildSakuraAndKoi(
       group.add(tree);
 
       const sh = new THREE.Mesh(
-        trackGeo(new THREE.PlaneGeometry(5.6, 5.6)),
+        trackGeo(new THREE.PlaneGeometry(6.4, 6.4)),
         mats.contactShadowMat,
       );
       sh.rotation.x = -Math.PI / 2;
@@ -1399,104 +1956,209 @@ export function buildSakuraAndKoi(
       tree.add(sh);
 
       if (idx % 2 === 0) {
-        // Sculpted multi-whorl Mughal Charbagh Sarv Cypress
-        const trunk = new THREE.Mesh(
-          trackGeo(new THREE.CylinderGeometry(0.12, 0.22, 1.5, 8)),
-          mats.yakisugiTimber,
-        );
-        trunk.position.y = 0.75;
-        tree.add(trunk);
-
-        const cBase = new THREE.Mesh(
-          trackGeo(new THREE.SphereGeometry(0.95, 10, 8)),
-          mats.pineNeedle,
-        );
-        cBase.scale.set(1.0, 2.0, 1.0);
-        cBase.position.y = 2.45;
-        cBase.castShadow = true;
-        tree.add(cBase);
-
-        const cMid = new THREE.Mesh(
-          trackGeo(new THREE.SphereGeometry(0.76, 10, 8)),
-          mats.pineNeedle,
-        );
-        cMid.scale.set(1.0, 2.2, 1.0);
-        cMid.position.y = 4.15;
-        cMid.castShadow = true;
-        tree.add(cMid);
-
-        const cTip = new THREE.Mesh(
-          trackGeo(new THREE.ConeGeometry(0.62, 2.4, 10)),
-          mats.pineNeedle,
-        );
-        cTip.position.y = 5.75;
-        cTip.castShadow = true;
-        tree.add(cTip);
+        // Sculpted multi-whorl feathered Mughal Charbagh Sarv Cypress
+        appendFeatheredCypressTree({
+          tree,
+          treeScale: tSpec.scale,
+          height: 6.9,
+          baseRadius: 1.0,
+          mats,
+          trackGeo,
+          rand,
+          sprigTargets: cypressSprigs,
+          palette: cypressPalette,
+        });
       } else {
-        // Spreading Mughal Banyan with hanging aerial prop roots
-        const trunk = new THREE.Mesh(
-          trackGeo(new THREE.CylinderGeometry(0.28, 0.48, 3.3, 9)),
+        // Sculpted Mughal Sacred Banyan with curved gnarled boughs & organic aerial prop roots
+        const buttress = new THREE.Mesh(
+          trackGeo(new THREE.CylinderGeometry(0.32, 0.58, 0.72, 10)),
           mats.yakisugiTimber,
         );
-        trunk.position.y = 1.65;
+        buttress.position.y = 0.34;
+        buttress.castShadow = true;
+        tree.add(buttress);
+
+        const trunkCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(0.14, 1.15, -0.08),
+          new THREE.Vector3(-0.08, 2.35, 0.1),
+          new THREE.Vector3(0.05, 3.35, 0.0),
+        ]);
+        const trunk = new THREE.Mesh(
+          trackGeo(new THREE.TubeGeometry(trunkCurve, 12, 0.32, 9, false)),
+          mats.yakisugiTimber,
+        );
         trunk.castShadow = true;
+        trunk.receiveShadow = true;
         tree.add(trunk);
 
         tree.updateMatrixWorld(true);
-        for (let b = 0; b < 4; b++) {
-          const a = (b / 4) * Math.PI * 2 + 0.4;
+
+        const boughCount = 5;
+        for (let b = 0; b < boughCount; b++) {
+          const a = (b / boughCount) * Math.PI * 2 + 0.35 + (rand() - 0.5) * 0.22;
+          const reach = 2.15 + rand() * 0.75;
+          const startPt = trunkCurve.getPoint(0.76 + (b % 2) * 0.14);
+          const midPt = new THREE.Vector3(
+            startPt.x + Math.cos(a) * reach * 0.52,
+            startPt.y + 0.65,
+            startPt.z + Math.sin(a) * reach * 0.52,
+          );
+          const tipPt = new THREE.Vector3(
+            startPt.x + Math.cos(a) * reach,
+            startPt.y + 1.05 + rand() * 0.45,
+            startPt.z + Math.sin(a) * reach,
+          );
+          const boughCurve = new THREE.CatmullRomCurve3([startPt, midPt, tipPt]);
           const bough = new THREE.Mesh(
-            trackGeo(new THREE.CylinderGeometry(0.09, 0.15, 2.35, 6)),
+            trackGeo(new THREE.TubeGeometry(boughCurve, 10, 0.125, 7, false)),
             mats.yakisugiTimber,
           );
-          bough.position.set(Math.cos(a) * 0.85, 3.35, Math.sin(a) * 0.85);
-          bough.rotation.z = -Math.cos(a) * 0.72;
-          bough.rotation.x = Math.sin(a) * 0.72;
+          bough.castShadow = true;
           tree.add(bough);
 
-          // Aerial prop root descending from bough into earth
-          const prop = new THREE.Mesh(propRootGeo, mats.yakisugiTimber);
-          prop.position.set(Math.cos(a) * 1.48, 1.55, Math.sin(a) * 1.48);
-          prop.castShadow = true;
-          tree.add(prop);
+          // Forked upper canopy twig off each bough
+          const subOrigin = boughCurve.getPoint(0.58);
+          const subAng = a + (b % 2 === 0 ? 0.58 : -0.58);
+          const subTip = new THREE.Vector3(
+            subOrigin.x + Math.cos(subAng) * 1.15,
+            subOrigin.y + 0.68,
+            subOrigin.z + Math.sin(subAng) * 1.15,
+          );
+          const subCurve = new THREE.CatmullRomCurve3([
+            subOrigin,
+            subOrigin.clone().lerp(subTip, 0.5).add(new THREE.Vector3(0, 0.22, 0)),
+            subTip,
+          ]);
+          const subMesh = new THREE.Mesh(
+            trackGeo(new THREE.TubeGeometry(subCurve, 6, 0.062, 5, false)),
+            mats.yakisugiTimber,
+          );
+          tree.add(subMesh);
+
+          // Organic curved descending aerial prop root(s) reaching down into the garden soil
+          const propAnchor = boughCurve.getPoint(0.68);
+          const propCurve = new THREE.CatmullRomCurve3([
+            propAnchor,
+            new THREE.Vector3(
+              propAnchor.x + Math.cos(a + 0.22) * 0.14,
+              propAnchor.y * 0.55,
+              propAnchor.z + Math.sin(a + 0.22) * 0.14,
+            ),
+            new THREE.Vector3(
+              propAnchor.x + Math.cos(a - 0.12) * 0.08,
+              0.0,
+              propAnchor.z + Math.sin(a - 0.12) * 0.08,
+            ),
+          ]);
+          const propRoot = new THREE.Mesh(
+            trackGeo(new THREE.TubeGeometry(propCurve, 10, 0.044, 6, false)),
+            mats.yakisugiTimber,
+          );
+          propRoot.castShadow = true;
+          tree.add(propRoot);
+
+          if (b % 2 === 0) {
+            const innerPropPt = boughCurve.getPoint(0.42);
+            const innerPropCurve = new THREE.CatmullRomCurve3([
+              innerPropPt,
+              new THREE.Vector3(innerPropPt.x * 0.94, innerPropPt.y * 0.5, innerPropPt.z * 0.94),
+              new THREE.Vector3(innerPropPt.x * 1.04, 0.0, innerPropPt.z * 1.04),
+            ]);
+            const innerProp = new THREE.Mesh(
+              trackGeo(new THREE.TubeGeometry(innerPropCurve, 8, 0.032, 5, false)),
+              mats.yakisugiTimber,
+            );
+            tree.add(innerProp);
+          }
+
+          // Subtle banyan figs & crimson Ashoka buds nestled beneath boughs
+          for (let f = 0; f < 3; f++) {
+            const figPt = boughCurve.getPoint(0.45 + f * 0.22);
+            const fig = new THREE.Mesh(
+              figGeo,
+              f === 1 ? mats.vermilionLacquer : mats.brushedGold,
+            );
+            fig.position.set(
+              figPt.x + (rand() - 0.5) * 0.22,
+              figPt.y - 0.14,
+              figPt.z + (rand() - 0.5) * 0.22,
+            );
+            tree.add(fig);
+          }
 
           banyanAnchors.push({
-            pos: new THREE.Vector3(Math.cos(a) * 1.75, 4.1, Math.sin(a) * 1.75).applyMatrix4(
-              tree.matrixWorld,
-            ),
-            radius: 1.55 * tSpec.scale,
+            pos: tipPt.clone().applyMatrix4(tree.matrixWorld),
+            radius: 1.5 * tSpec.scale,
+          });
+          banyanAnchors.push({
+            pos: subTip.clone().applyMatrix4(tree.matrixWorld),
+            radius: 1.2 * tSpec.scale,
           });
         }
+
         banyanAnchors.push({
-          pos: new THREE.Vector3(0, 4.65, 0).applyMatrix4(tree.matrixWorld),
-          radius: 1.8 * tSpec.scale,
+          pos: new THREE.Vector3(0.05, 4.75, 0).applyMatrix4(tree.matrixWorld),
+          radius: 1.85 * tSpec.scale,
         });
       }
     });
 
+    if (cypressSprigs.length > 0) {
+      const cypGeo = trackGeo(createPineSprigGeometry(1.12, 1.32));
+      const cypInst = new THREE.InstancedMesh(cypGeo, mats.pineBough, cypressSprigs.length);
+      cypInst.castShadow = true;
+      cypInst.receiveShadow = true;
+      cypressSprigs.forEach((sp, i) => {
+        _euler.set(sp.rotX, sp.rotY, sp.rotZ, 'YXZ');
+        _quat.setFromEuler(_euler);
+        _scale.setScalar(sp.scale);
+        _mat4.compose(sp.pos, _quat, _scale);
+        cypInst.setMatrixAt(i, _mat4);
+        cypInst.setColorAt(i, sp.color);
+      });
+      cypInst.instanceMatrix.needsUpdate = true;
+      if (cypInst.instanceColor) cypInst.instanceColor.needsUpdate = true;
+      cypInst.computeBoundingSphere();
+      group.add(cypInst);
+    }
+
     if (banyanAnchors.length > 0) {
-      const perAnchor = 13;
-      const canopyGeo = trackGeo(createCrossedClusterGeometry(1.15));
+      const perAnchor = 15;
+      const canopyGeo = trackGeo(createCrossedClusterGeometry(1.16));
       const canopyInst = new THREE.InstancedMesh(
         canopyGeo,
         mats.greenCanopy,
         banyanAnchors.length * perAnchor,
       );
       canopyInst.castShadow = true;
+      canopyInst.receiveShadow = true;
+
+      const leavesPerAnchor = 11;
+      const leafGeo = trackGeo(createCurvedLeafGeometry());
+      const leafInst = new THREE.InstancedMesh(
+        leafGeo,
+        mats.greenLeaf,
+        banyanAnchors.length * leavesPerAnchor,
+      );
+      leafInst.castShadow = true;
+
       const greens = [
         new THREE.Color(0xc5e6a5),
         new THREE.Color(0x9fd07e),
         new THREE.Color(0xb6de92),
+        new THREE.Color(0x88bf69),
       ];
       const cTmp = new THREE.Color();
       let idx = 0;
+      let lIdx = 0;
       for (const anchor of banyanAnchors) {
         for (let i = 0; i < perAnchor; i++) {
           const theta = rand() * Math.PI * 2;
           const r = Math.pow(rand(), 0.55) * anchor.radius;
           _vec3A.set(
             anchor.pos.x + Math.cos(theta) * r,
-            anchor.pos.y + (rand() - 0.5) * anchor.radius * 0.7,
+            anchor.pos.y + (rand() - 0.5) * anchor.radius * 0.65,
             anchor.pos.z + Math.sin(theta) * r,
           );
           _euler.set((rand() - 0.5) * 0.8, rand() * Math.PI * 2, (rand() - 0.5) * 0.8);
@@ -1508,15 +2170,38 @@ export function buildSakuraAndKoi(
           canopyInst.setColorAt(idx, cTmp);
           idx++;
         }
+
+        for (let j = 0; j < leavesPerAnchor; j++) {
+          const theta = rand() * Math.PI * 2;
+          const r = (0.2 + Math.pow(rand(), 0.6) * 0.86) * anchor.radius;
+          const yOff = (rand() - 0.45) * anchor.radius * 0.64;
+          _vec3A.set(
+            anchor.pos.x + Math.cos(theta) * r,
+            anchor.pos.y + yOff,
+            anchor.pos.z + Math.sin(theta) * r,
+          );
+          _euler.set(0.4 + rand() * 0.9, theta + (rand() - 0.5) * 0.8, (rand() - 0.5) * 0.6);
+          _quat.setFromEuler(_euler);
+          _scale.setScalar(0.82 + rand() * 0.52);
+          _mat4.compose(_vec3A, _quat, _scale);
+          leafInst.setMatrixAt(lIdx, _mat4);
+          cTmp.copy(greens[Math.floor(rand() * greens.length)]);
+          leafInst.setColorAt(lIdx, cTmp);
+          lIdx++;
+        }
       }
       canopyInst.instanceMatrix.needsUpdate = true;
       if (canopyInst.instanceColor) canopyInst.instanceColor.needsUpdate = true;
       canopyInst.computeBoundingSphere();
       group.add(canopyInst);
+
+      leafInst.instanceMatrix.needsUpdate = true;
+      if (leafInst.instanceColor) leafInst.instanceColor.needsUpdate = true;
+      leafInst.computeBoundingSphere();
+      group.add(leafInst);
     }
   } else {
-    // Persian Desert Oasis Date Palms + Sculpted Sarv Cypresses + Juvenile Fan Palms
-    // V-folded arched pinnate frond geometry for natural 3D depth from every angle
+    // Persian Desert Oasis: Ringed Date Palms + Feathered Sarv Cypresses + Beside-Palace Pomegranate Trees
     const frondGeo = trackGeo(new THREE.PlaneGeometry(1.48, 3.25, 2, 8));
     frondGeo.translate(0, 1.625, 0);
     const fPos = frondGeo.attributes.position;
@@ -1527,7 +2212,6 @@ export function buildSakuraAndKoi(
       const vFold = Math.abs(x) * 0.24;
       const arch = Math.pow(t, 1.72) * 1.48;
       fPos.setZ(i, arch + vFold);
-      // Taper tip slightly for natural palm frond silhouette
       fPos.setX(i, x * (1 - Math.pow(t, 2.2) * 0.48));
     }
     frondGeo.computeVertexNormals();
@@ -1537,8 +2221,17 @@ export function buildSakuraAndKoi(
     const crownShaftGeo = trackGeo(new THREE.CylinderGeometry(0.36, 0.24, 0.65, 10));
     const dateStalkGeo = trackGeo(new THREE.CylinderGeometry(0.025, 0.018, 0.72, 5));
     const dateDrupeGeo = trackGeo(new THREE.SphereGeometry(0.075, 7, 6));
+    const pomeFruitGeo = trackGeo(new THREE.SphereGeometry(0.11, 9, 8));
+    const pomeCalyxGeo = trackGeo(new THREE.ConeGeometry(0.045, 0.06, 5));
 
     const palmCrowns: Array<{ pos: THREE.Vector3; scale: number }> = [];
+    const persianCypressSprigs: PineSprigInstance[] = [];
+    const pomegranateAnchors: Array<{ pos: THREE.Vector3; radius: number }> = [];
+    const cypressPalette = [
+      new THREE.Color(0x2a5a35),
+      new THREE.Color(0x366d41),
+      new THREE.Color(0x224a2b),
+    ];
 
     treeSpecs.forEach((tSpec, idx) => {
       const ty = groundHeightAt(tSpec.x, tSpec.z, style);
@@ -1556,40 +2249,139 @@ export function buildSakuraAndKoi(
       sh.position.y = 0.04;
       tree.add(sh);
 
-      if (idx % 4 === 3) {
-        // Multi-whorl Persian Sarv Garden Cypress
-        const cTrunk = new THREE.Mesh(
-          trackGeo(new THREE.CylinderGeometry(0.12, 0.2, 1.3, 8)),
+      // Trees right inside/beside the Safavid Palace courtyard & gatehouse -> Persian Pomegranate Trees
+      const isBesidePalacePomegranate =
+        Math.hypot(tSpec.x + 6.2, tSpec.z + 12.0) < 0.8 ||
+        Math.hypot(tSpec.x + 3.2, tSpec.z + 3.8) < 0.8;
+      // Trees flanking east wall of Safavid Palace & oasis corners -> Sculpted Feathered Sarv Cypresses
+      const isSarvCypress =
+        !isBesidePalacePomegranate &&
+        (idx % 4 === 3 || Math.hypot(tSpec.x - 17.0, tSpec.z + 22.5) < 0.8);
+
+      if (isBesidePalacePomegranate) {
+        // Ornate Gnarled Persian Courtyard Pomegranate Tree beside the Safavid Palace
+        const rootBase = new THREE.Mesh(
+          trackGeo(new THREE.CylinderGeometry(0.22, 0.42, 0.55, 8)),
           mats.yakisugiTimber,
         );
-        cTrunk.position.y = 0.65;
-        tree.add(cTrunk);
+        rootBase.position.y = 0.25;
+        rootBase.castShadow = true;
+        tree.add(rootBase);
 
-        const c1 = new THREE.Mesh(
-          trackGeo(new THREE.SphereGeometry(0.88, 10, 8)),
-          mats.pineNeedle,
-        );
-        c1.scale.set(1, 2.0, 1);
-        c1.position.y = 2.4;
-        c1.castShadow = true;
-        tree.add(c1);
+        for (let r = 0; r < 3; r++) {
+          const ra = (r / 3) * Math.PI * 2 + 0.4;
+          const spurCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(Math.cos(ra) * 0.12, 0.4, Math.sin(ra) * 0.12),
+            new THREE.Vector3(Math.cos(ra) * 0.44, 0.12, Math.sin(ra) * 0.44),
+            new THREE.Vector3(Math.cos(ra) * 0.72, -0.02, Math.sin(ra) * 0.72),
+          ]);
+          const spur = new THREE.Mesh(
+            trackGeo(new THREE.TubeGeometry(spurCurve, 5, 0.075, 5, false)),
+            mats.yakisugiTimber,
+          );
+          tree.add(spur);
+        }
 
-        const c2 = new THREE.Mesh(
-          trackGeo(new THREE.SphereGeometry(0.7, 10, 8)),
-          mats.pineNeedle,
+        const leanX = (rand() - 0.5) * 0.55;
+        const leanZ = (rand() - 0.5) * 0.55;
+        const trunkCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(leanX * 0.35, 1.05, leanZ * 0.35),
+          new THREE.Vector3(leanX * 0.8, 2.05, leanZ * 0.8),
+          new THREE.Vector3(leanX, 2.95, leanZ),
+        ]);
+        const trunk = new THREE.Mesh(
+          trackGeo(new THREE.TubeGeometry(trunkCurve, 12, 0.18, 8, false)),
+          mats.yakisugiTimber,
         );
-        c2.scale.set(1, 2.1, 1);
-        c2.position.y = 4.1;
-        c2.castShadow = true;
-        tree.add(c2);
+        trunk.castShadow = true;
+        tree.add(trunk);
 
-        const c3 = new THREE.Mesh(
-          trackGeo(new THREE.ConeGeometry(0.54, 2.1, 10)),
-          mats.pineNeedle,
-        );
-        c3.position.y = 5.6;
-        c3.castShadow = true;
-        tree.add(c3);
+        tree.updateMatrixWorld(true);
+
+        for (let b = 0; b < 5; b++) {
+          const ang = (b / 5) * Math.PI * 2 + rand() * 0.4;
+          const reach = 1.65 + rand() * 0.7;
+          const startPt = trunkCurve.getPoint(0.55 + (b % 3) * 0.15);
+          const midPt = new THREE.Vector3(
+            startPt.x + Math.cos(ang) * reach * 0.55,
+            startPt.y + 0.65,
+            startPt.z + Math.sin(ang) * reach * 0.55,
+          );
+          const tipPt = new THREE.Vector3(
+            startPt.x + Math.cos(ang) * reach,
+            3.15 + rand() * 0.95,
+            startPt.z + Math.sin(ang) * reach,
+          );
+          const brCurve = new THREE.CatmullRomCurve3([startPt, midPt, tipPt]);
+          const br = new THREE.Mesh(
+            trackGeo(new THREE.TubeGeometry(brCurve, 8, 0.082, 6, false)),
+            mats.yakisugiTimber,
+          );
+          br.castShadow = true;
+          tree.add(br);
+
+          // Forked fruiting twigs
+          const twOrigin = brCurve.getPoint(0.56);
+          const twAng = ang + (b % 2 === 0 ? 0.54 : -0.54);
+          const twTip = new THREE.Vector3(
+            twOrigin.x + Math.cos(twAng) * 0.95,
+            twOrigin.y + 0.52,
+            twOrigin.z + Math.sin(twAng) * 0.95,
+          );
+          const twMesh = new THREE.Mesh(
+            trackGeo(
+              new THREE.TubeGeometry(new THREE.CatmullRomCurve3([twOrigin, twTip]), 5, 0.038, 5, false),
+            ),
+            mats.yakisugiTimber,
+          );
+          tree.add(twMesh);
+
+          // Ruby pomegranate fruits with golden calyx crowns hanging beneath fruiting branches
+          for (let f = 0; f < 4; f++) {
+            const ft = 0.42 + f * 0.18;
+            const fp = brCurve.getPoint(ft);
+            const fx = fp.x + (rand() - 0.5) * 0.34;
+            const fy = fp.y - 0.16 - rand() * 0.14;
+            const fz = fp.z + (rand() - 0.5) * 0.34;
+            const pome = new THREE.Mesh(pomeFruitGeo, mats.vermilionLacquer);
+            pome.position.set(fx, fy, fz);
+            pome.castShadow = true;
+            tree.add(pome);
+
+            const calyx = new THREE.Mesh(pomeCalyxGeo, mats.brushedGold);
+            calyx.position.set(fx, fy - 0.11, fz);
+            calyx.rotation.x = Math.PI;
+            tree.add(calyx);
+          }
+
+          pomegranateAnchors.push({
+            pos: tipPt.clone().applyMatrix4(tree.matrixWorld),
+            radius: 1.15 * tSpec.scale,
+          });
+          pomegranateAnchors.push({
+            pos: twTip.clone().applyMatrix4(tree.matrixWorld),
+            radius: 0.98 * tSpec.scale,
+          });
+        }
+
+        pomegranateAnchors.push({
+          pos: new THREE.Vector3(leanX, 3.85, leanZ).applyMatrix4(tree.matrixWorld),
+          radius: 1.35 * tSpec.scale,
+        });
+      } else if (isSarvCypress) {
+        // Sculpted Multi-Whorl Feathered Persian Sarv Cypress
+        appendFeatheredCypressTree({
+          tree,
+          treeScale: tSpec.scale,
+          height: 6.7,
+          baseRadius: 0.94,
+          mats,
+          trackGeo,
+          rand,
+          sprigTargets: persianCypressSprigs,
+          palette: cypressPalette,
+        });
       } else {
         const leanX = (rand() - 0.5) * 1.55;
         const leanZ = (rand() - 0.5) * 1.55;
@@ -1608,12 +2400,10 @@ export function buildSakuraAndKoi(
         trunk.receiveShadow = true;
         tree.add(trunk);
 
-        // Flared fibrous root collar at desert floor
         const rootMound = new THREE.Mesh(rootMoundGeo, mats.palmBark);
         rootMound.position.y = 0.28;
         tree.add(rootMound);
 
-        // Overlapping sculpted leaf-scar boot rings up the trunk
         const ringCount = 15;
         const upVec = new THREE.Vector3(0, 1, 0);
         for (let r = 1; r <= ringCount; r++) {
@@ -1630,12 +2420,10 @@ export function buildSakuraAndKoi(
           tree.add(collar);
         }
 
-        // Fibrous swollen crownshaft neck beneath the fronds
         const crownShaft = new THREE.Mesh(crownShaftGeo, mats.palmBark);
         crownShaft.position.set(leanX, trunkH - 0.12, leanZ);
         tree.add(crownShaft);
 
-        // 4 compound hanging golden-amber & mahogany date-fruit panicles
         for (let d = 0; d < 4; d++) {
           const da = (d / 4) * Math.PI * 2 + idx * 0.4;
           const stalk = new THREE.Mesh(dateStalkGeo, mats.brushedGold);
@@ -1701,7 +2489,104 @@ export function buildSakuraAndKoi(
       });
     }
 
-    // 3-tier lush crown (6 drooping skirt fronds + 8 spreading mid fronds + 4 upright spears = 18/crown)
+    // Instanced Persian Sarv Cypress needle sprays
+    if (persianCypressSprigs.length > 0) {
+      const cypGeo = trackGeo(createPineSprigGeometry(1.12, 1.32));
+      const cypInst = new THREE.InstancedMesh(cypGeo, mats.pineBough, persianCypressSprigs.length);
+      cypInst.castShadow = true;
+      cypInst.receiveShadow = true;
+      persianCypressSprigs.forEach((sp, i) => {
+        _euler.set(sp.rotX, sp.rotY, sp.rotZ, 'YXZ');
+        _quat.setFromEuler(_euler);
+        _scale.setScalar(sp.scale);
+        _mat4.compose(sp.pos, _quat, _scale);
+        cypInst.setMatrixAt(i, _mat4);
+        cypInst.setColorAt(i, sp.color);
+      });
+      cypInst.instanceMatrix.needsUpdate = true;
+      if (cypInst.instanceColor) cypInst.instanceColor.needsUpdate = true;
+      cypInst.computeBoundingSphere();
+      group.add(cypInst);
+    }
+
+    // Instanced foliage for Beside-Palace Persian Pomegranate Trees
+    if (pomegranateAnchors.length > 0) {
+      const perAnchor = 15;
+      const canopyGeo = trackGeo(createCrossedClusterGeometry(1.02));
+      const canopyInst = new THREE.InstancedMesh(
+        canopyGeo,
+        mats.greenCanopy,
+        pomegranateAnchors.length * perAnchor,
+      );
+      canopyInst.castShadow = true;
+      canopyInst.receiveShadow = true;
+
+      const leavesPerAnchor = 12;
+      const leafGeo = trackGeo(createCurvedLeafGeometry());
+      const leafInst = new THREE.InstancedMesh(
+        leafGeo,
+        mats.greenLeaf,
+        pomegranateAnchors.length * leavesPerAnchor,
+      );
+      leafInst.castShadow = true;
+
+      const oasisGreens = [
+        new THREE.Color(0xc8e49e),
+        new THREE.Color(0x9ec86d),
+        new THREE.Color(0xb4da84),
+      ];
+      const cTmp = new THREE.Color();
+      let cIdx = 0;
+      let lIdx = 0;
+      for (const anchor of pomegranateAnchors) {
+        for (let i = 0; i < perAnchor; i++) {
+          const theta = rand() * Math.PI * 2;
+          const r = Math.pow(rand(), 0.55) * anchor.radius;
+          _vec3A.set(
+            anchor.pos.x + Math.cos(theta) * r,
+            anchor.pos.y + (rand() - 0.48) * anchor.radius * 0.62,
+            anchor.pos.z + Math.sin(theta) * r,
+          );
+          _euler.set((rand() - 0.5) * 0.8, rand() * Math.PI * 2, (rand() - 0.5) * 0.8);
+          _quat.setFromEuler(_euler);
+          _scale.setScalar(0.75 + rand() * 0.45);
+          _mat4.compose(_vec3A, _quat, _scale);
+          canopyInst.setMatrixAt(cIdx, _mat4);
+          cTmp.copy(oasisGreens[i % oasisGreens.length]);
+          canopyInst.setColorAt(cIdx, cTmp);
+          cIdx++;
+        }
+
+        for (let j = 0; j < leavesPerAnchor; j++) {
+          const theta = rand() * Math.PI * 2;
+          const r = (0.18 + Math.pow(rand(), 0.6) * 0.85) * anchor.radius;
+          _vec3A.set(
+            anchor.pos.x + Math.cos(theta) * r,
+            anchor.pos.y + (rand() - 0.45) * anchor.radius * 0.6,
+            anchor.pos.z + Math.sin(theta) * r,
+          );
+          _euler.set(0.4 + rand() * 0.85, theta + (rand() - 0.5) * 0.8, (rand() - 0.5) * 0.6);
+          _quat.setFromEuler(_euler);
+          _scale.setScalar(0.76 + rand() * 0.48);
+          _mat4.compose(_vec3A, _quat, _scale);
+          leafInst.setMatrixAt(lIdx, _mat4);
+          cTmp.copy(oasisGreens[j % oasisGreens.length]);
+          leafInst.setColorAt(lIdx, cTmp);
+          lIdx++;
+        }
+      }
+      canopyInst.instanceMatrix.needsUpdate = true;
+      if (canopyInst.instanceColor) canopyInst.instanceColor.needsUpdate = true;
+      canopyInst.computeBoundingSphere();
+      group.add(canopyInst);
+
+      leafInst.instanceMatrix.needsUpdate = true;
+      if (leafInst.instanceColor) leafInst.instanceColor.needsUpdate = true;
+      leafInst.computeBoundingSphere();
+      group.add(leafInst);
+    }
+
+    // 3-tier lush palm crown (6 drooping skirt fronds + 8 spreading mid fronds + 4 upright spears = 18/crown)
     const frondsPerCrown = 18;
     const frondInst = new THREE.InstancedMesh(
       frondGeo,
@@ -1726,20 +2611,17 @@ export function buildSakuraAndKoi(
         let fScale: number;
         let col: THREE.Color;
         if (i < 6) {
-          // Lower arching/drooping mature fronds
           ang = (i / 6) * Math.PI * 2 + (rand() - 0.5) * 0.25;
           tierTilt = 1.24 + rand() * 0.28;
           fScale = (0.95 + rand() * 0.22) * crown.scale;
           col = frondColors[2];
         } else if (i < 14) {
-          // Mid spreading crown fronds
           const k = i - 6;
           ang = (k / 8) * Math.PI * 2 + 0.22 + (rand() - 0.5) * 0.2;
           tierTilt = 0.76 + rand() * 0.24;
           fScale = (1.02 + rand() * 0.26) * crown.scale;
           col = frondColors[k % 2];
         } else {
-          // Upright young central spear fronds
           const k = i - 14;
           ang = (k / 4) * Math.PI * 2 + 0.45;
           tierTilt = 0.3 + rand() * 0.16;

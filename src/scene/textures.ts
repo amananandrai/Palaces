@@ -51,6 +51,7 @@ export interface ProceduralTextureSet {
   palmBarkAlbedo: THREE.CanvasTexture;
   palmBarkBump: THREE.CanvasTexture;
   greenCanopyAlpha: THREE.CanvasTexture;
+  pineBoughAlpha: THREE.CanvasTexture;
   dispose: () => void;
 }
 
@@ -1202,25 +1203,175 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const palmBarkAlbedo = track(configureTexture(palmBarkC, true, maxAnisotropy, 1, 5));
   const palmBarkBump = track(configureTexture(palmBarkBmpC, false, maxAnisotropy, 1, 5));
 
-  // 25. Dense green broad-leaf cluster alpha card (English Oak / Mughal Banyan)
-  const [canopyC, canopyCtx] = makeCanvas(256, 256);
-  canopyCtx.clearRect(0, 0, 256, 256);
+  // 25. Detailed 512x512 broad-leaf botanical sprig cluster alpha card (Victorian Oak / Mughal Banyan / Persian Pomegranate)
+  const [canopyC, canopyCtx] = makeCanvas(512, 512);
+  canopyCtx.clearRect(0, 0, 512, 512);
   const randCan = seeded(1492);
-  for (let i = 0; i < 28; i++) {
-    const cx = 42 + randCan() * 172;
-    const cy = 42 + randCan() * 172;
-    const rx = 20 + randCan() * 20;
-    const ry = 13 + randCan() * 12;
-    const ang = randCan() * Math.PI;
-    const gShade = Math.floor(96 + randCan() * 62);
-    canopyCtx.fillStyle = `rgb(${Math.floor(gShade * 0.56)}, ${gShade}, ${Math.floor(gShade * 0.42)})`;
+
+  // Branching woody stems at the core of the sprig
+  canopyCtx.strokeStyle = '#533c29';
+  canopyCtx.lineCap = 'round';
+  canopyCtx.lineWidth = 5.5;
+  canopyCtx.beginPath();
+  canopyCtx.moveTo(256, 445);
+  canopyCtx.quadraticCurveTo(254, 330, 256, 175);
+  canopyCtx.stroke();
+  for (const [sx, sy, cx1, cy1, ex, ey] of [
+    [256, 360, 195, 315, 130, 265],
+    [256, 345, 315, 300, 385, 250],
+    [256, 265, 200, 215, 148, 155],
+    [256, 255, 312, 205, 368, 145],
+  ]) {
+    canopyCtx.lineWidth = 3.2;
     canopyCtx.beginPath();
-    canopyCtx.ellipse(cx, cy, rx, ry, ang, 0, Math.PI * 2);
+    canopyCtx.moveTo(sx, sy);
+    canopyCtx.quadraticCurveTo(cx1, cy1, ex, ey);
+    canopyCtx.stroke();
+  }
+
+  // Draw crisp serrated/lobed broad leaves with midribs & veins
+  const drawCanopyLeaf = (
+    lx: number,
+    ly: number,
+    len: number,
+    wid: number,
+    ang: number,
+    bright: number,
+  ) => {
+    canopyCtx.save();
+    canopyCtx.translate(lx, ly);
+    canopyCtx.rotate(ang);
+
+    const gLeaf = canopyCtx.createLinearGradient(0, 0, 0, -len);
+    const r0 = Math.floor(46 + bright * 28);
+    const g0 = Math.floor(88 + bright * 46);
+    const b0 = Math.floor(32 + bright * 20);
+    gLeaf.addColorStop(0, `rgb(${r0}, ${g0}, ${b0})`);
+    gLeaf.addColorStop(0.6, `rgb(${r0 + 26}, ${g0 + 36}, ${b0 + 18})`);
+    gLeaf.addColorStop(1, `rgb(${r0 + 48}, ${g0 + 54}, ${b0 + 26})`);
+    canopyCtx.fillStyle = gLeaf;
+
+    canopyCtx.beginPath();
+    canopyCtx.moveTo(0, 0);
+    const lobes = 7;
+    for (let i = 1; i <= lobes; i++) {
+      const t = i / lobes;
+      const y = -t * len;
+      const wEnv = Math.sin(Math.pow(t, 0.72) * Math.PI) * wid * (1 - t * 0.22);
+      const yMid = -((i - 0.5) / lobes) * len;
+      canopyCtx.lineTo(wEnv * 1.08, yMid);
+      canopyCtx.lineTo(wEnv * 0.88, y);
+    }
+    for (let i = lobes; i >= 1; i--) {
+      const t = i / lobes;
+      const y = -t * len;
+      const wEnv = Math.sin(Math.pow(t, 0.72) * Math.PI) * wid * (1 - t * 0.22);
+      const yMid = -((i - 0.5) / lobes) * len;
+      canopyCtx.lineTo(-wEnv * 0.88, y);
+      canopyCtx.lineTo(-wEnv * 1.08, yMid);
+    }
+    canopyCtx.closePath();
     canopyCtx.fill();
+
+    // Leaf midrib and angled veins
+    canopyCtx.strokeStyle = 'rgba(202, 228, 146, 0.42)';
+    canopyCtx.lineWidth = 1.6;
+    canopyCtx.beginPath();
+    canopyCtx.moveTo(0, -2);
+    canopyCtx.lineTo(0, -len * 0.9);
+    canopyCtx.stroke();
+    canopyCtx.lineWidth = 1.0;
+    for (let v = 1; v <= 4; v++) {
+      const vy = -(v / 5.2) * len;
+      const vw = Math.sin((v / 5.2) * Math.PI) * wid * 0.72;
+      canopyCtx.beginPath();
+      canopyCtx.moveTo(0, vy);
+      canopyCtx.lineTo(vw, vy - len * 0.12);
+      canopyCtx.moveTo(0, vy - 2);
+      canopyCtx.lineTo(-vw, vy - len * 0.14);
+      canopyCtx.stroke();
+    }
+    canopyCtx.restore();
+  };
+
+  for (let i = 0; i < 34; i++) {
+    const rad = 32 + randCan() * 145;
+    const theta = randCan() * Math.PI * 2;
+    const cx = 256 + Math.cos(theta) * rad * 0.96;
+    const cy = 248 + Math.sin(theta) * rad * 0.88;
+    const ang = theta + Math.PI / 2 + (randCan() - 0.5) * 0.95;
+    const len = 54 + randCan() * 38;
+    const wid = 22 + randCan() * 14;
+    const bright = (i / 34) * 0.65 + randCan() * 0.35;
+    drawCanopyLeaf(cx, cy, len, wid, ang, bright);
   }
   const greenCanopyAlpha = track(configureTexture(canopyC, true, maxAnisotropy, 1, 1));
   greenCanopyAlpha.wrapS = THREE.ClampToEdgeWrapping;
   greenCanopyAlpha.wrapT = THREE.ClampToEdgeWrapping;
+
+  // 26. Detailed 512x512 Evergreen Pine / Cypress Needle Bough alpha card (Russian Spruce & Mughal/Persian Sarv Cypress)
+  const [pineC, pineCtx] = makeCanvas(512, 512);
+  pineCtx.clearRect(0, 0, 512, 512);
+  const randPine = seeded(7741);
+
+  const drawPineTwig = (
+    sx: number,
+    sy: number,
+    ang: number,
+    length: number,
+    spread: number,
+    brightOffset: number,
+  ) => {
+    pineCtx.save();
+    pineCtx.translate(sx, sy);
+    pineCtx.rotate(ang);
+
+    // Woody twig spine
+    pineCtx.strokeStyle = '#4e3726';
+    pineCtx.lineWidth = 4.2;
+    pineCtx.lineCap = 'round';
+    pineCtx.beginPath();
+    pineCtx.moveTo(0, 0);
+    pineCtx.lineTo(0, -length);
+    pineCtx.stroke();
+
+    // Dense fanning conifer needles along both sides of twig
+    const needleCount = Math.floor(length * 0.42);
+    for (let n = 0; n < needleCount; n++) {
+      const t = n / needleCount;
+      const ny = -t * length;
+      const side = n % 2 === 0 ? 1 : -1;
+      const nLen = (34 + randPine() * 24) * (1 - t * 0.42) * spread;
+      const nAng = side * (0.48 + randPine() * 0.48);
+      const shade = 48 + Math.floor((t * 0.55 + brightOffset + randPine() * 0.35) * 65);
+      pineCtx.strokeStyle = `rgb(${Math.floor(shade * 0.42)}, ${Math.min(185, shade + 24)}, ${Math.floor(shade * 0.52)})`;
+      pineCtx.lineWidth = 2.6 + randPine() * 1.1;
+      pineCtx.beginPath();
+      pineCtx.moveTo(0, ny);
+      pineCtx.quadraticCurveTo(
+        Math.sin(nAng) * nLen * 0.5,
+        ny - Math.cos(nAng) * nLen * 0.55,
+        Math.sin(nAng) * nLen,
+        ny - Math.cos(nAng) * nLen,
+      );
+      pineCtx.stroke();
+    }
+    pineCtx.restore();
+  };
+
+  // Fanning sprays creating an organic multi-branched conifer/cypress bough
+  drawPineTwig(256, 468, -0.58, 225, 0.92, 0.05);
+  drawPineTwig(256, 468, 0.58, 225, 0.92, 0.08);
+  drawPineTwig(256, 450, -0.28, 300, 1.0, 0.2);
+  drawPineTwig(256, 450, 0.28, 300, 1.0, 0.24);
+  drawPineTwig(256, 445, 0.0, 355, 1.05, 0.38);
+  // Secondary inner needle tufts for rich depth
+  drawPineTwig(210, 330, -0.45, 140, 0.78, 0.42);
+  drawPineTwig(302, 330, 0.45, 140, 0.78, 0.42);
+
+  const pineBoughAlpha = track(configureTexture(pineC, true, maxAnisotropy, 1, 1));
+  pineBoughAlpha.wrapS = THREE.ClampToEdgeWrapping;
+  pineBoughAlpha.wrapT = THREE.ClampToEdgeWrapping;
 
   return {
     stoneAlbedo,
@@ -1273,6 +1424,7 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     palmBarkAlbedo,
     palmBarkBump,
     greenCanopyAlpha,
+    pineBoughAlpha,
     dispose: () => {
       for (const tex of created) {
         tex.dispose();

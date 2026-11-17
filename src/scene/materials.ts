@@ -47,7 +47,10 @@ export interface SceneMaterialLibrary {
   lushGrass: THREE.MeshStandardMaterial;
   birchBark: THREE.MeshStandardMaterial;
   pineNeedle: THREE.MeshStandardMaterial;
+  pineBough: THREE.MeshStandardMaterial;
   greenCanopy: THREE.MeshStandardMaterial;
+  greenLeaf: THREE.MeshStandardMaterial;
+  treeSnow: THREE.MeshStandardMaterial;
   palmFrond: THREE.MeshStandardMaterial;
   palmBark: THREE.MeshStandardMaterial;
   hedgeFoliage: THREE.MeshStandardMaterial;
@@ -582,10 +585,22 @@ export function createMaterialLibrary(
     }),
   );
 
+  const pineBough = track(
+    new THREE.MeshStandardMaterial({
+      map: textures.pineBoughAlpha,
+      alphaTest: 0.28,
+      side: THREE.DoubleSide,
+      color: 0xffffff,
+      roughness: 0.66,
+      metalness: 0.0,
+    }),
+  );
+  applyFoliageSway(pineBough, 0.018);
+
   const greenCanopy = track(
     new THREE.MeshStandardMaterial({
       map: textures.greenCanopyAlpha,
-      alphaTest: 0.32,
+      alphaTest: 0.3,
       side: THREE.DoubleSide,
       color: 0xffffff,
       roughness: 0.56,
@@ -593,6 +608,27 @@ export function createMaterialLibrary(
     }),
   );
   applyFoliageSway(greenCanopy, 0.026);
+
+  const greenLeaf = track(
+    new THREE.MeshStandardMaterial({
+      map: textures.sakuraLeafAlpha,
+      alphaTest: 0.34,
+      side: THREE.DoubleSide,
+      color: 0xffffff,
+      roughness: 0.5,
+      metalness: 0.0,
+    }),
+  );
+  applyFoliageSway(greenLeaf, 0.028);
+
+  const treeSnow = track(
+    new THREE.MeshStandardMaterial({
+      map: textures.snowTerrainAlbedo,
+      color: 0xf4f8fc,
+      roughness: 0.78,
+      metalness: 0.04,
+    }),
+  );
 
   const palmFrond = track(
     new THREE.MeshStandardMaterial({
@@ -769,7 +805,10 @@ export function createMaterialLibrary(
     lushGrass,
     birchBark,
     pineNeedle,
+    pineBough,
     greenCanopy,
+    greenLeaf,
+    treeSnow,
     palmFrond,
     palmBark,
     hedgeFoliage,
